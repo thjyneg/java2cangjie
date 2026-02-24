@@ -6,6 +6,7 @@ import subprocess
 import sys
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
@@ -16,16 +17,18 @@ DEFAULT_J2CJ_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "j2
 class J2CJResult:
     """Result of j2cj execution."""
 
-    def __init__(self, success: bool, errors: List[str], warnings: List[str]):
+    def __init__(self, success: bool, errors: List[str], warnings: List[str], output_files: List[str] = None):
         self.success = success
         self.errors = errors
         self.warnings = warnings
+        self.output_files = output_files or []
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "success": self.success,
             "errors": self.errors,
-            "warnings": self.warnings
+            "warnings": self.warnings,
+            "output_files": self.output_files
         }
 
 
@@ -45,7 +48,7 @@ def run_j2cj(
 
     Args:
         source_path: Path to Java source files or directory
-        output_dir: Output directory for generated Cangjie files
+        output_dir: Output directory for generated Cangjie files (default: ./cangjie_output)
         j2cj_path: Path to j2cj.jar (default: DEFAULT_J2CJ_PATH)
         classpath: Classpath for Java compilation
         sourcepath: Source path for Java files
@@ -57,6 +60,10 @@ def run_j2cj(
     Returns:
         J2CJResult containing success status, errors, and warnings
     """
+    # Set default output to cangjie_output if not specified
+    if output_dir is None or output_dir == ".":
+        output_dir = os.path.join(os.getcwd(), "cangjie_output")
+
     j2cj_jar = j2cj_path or DEFAULT_J2CJ_PATH
 
     if not os.path.exists(j2cj_jar):
@@ -66,6 +73,12 @@ def run_j2cj(
             warnings=[]
         )
 
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save current working directory
+    original_cwd = os.getcwd()
+
     # Build command
     cmd = [
         "java",
@@ -74,7 +87,7 @@ def run_j2cj(
     ]
 
     # Add options
-    cmd.extend(["-s", output_dir])
+    cmd.extend(["-s", "."])  # Output to current working directory
     cmd.extend(["-sourcepath", source_path])
 
     if classpath:
@@ -94,16 +107,22 @@ def run_j2cj(
     source_files = _get_java_files(source_path)
     cmd.extend(source_files)
 
-    # Execute
+    # Execute in temp directory to collect output files
+    temp_dir = os.path.join(os.path.dirname(j2cj_jar), "temp_output")
+    os.makedirs(temp_dir, exist_ok=True)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    os.makedirs(temp_dir, exist_ok=True)
+
     errors = []
     warnings = []
+    output_files = []
 
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            cwd=os.path.dirname(j2cj_jar)
+            cwd=temp_dir
         )
 
         # Parse output
@@ -121,24 +140,90 @@ def run_j2cj(
             elif 'fatal' in line.lower():
                 errors.append(line)
 
+        # Move generated .cj files to output directory preserving structure
+        if os.path.exists(temp_dir):
+            output_files = _move_generated_files(temp_dir, output_dir, source_path)
+
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
         return J2CJResult(
             success=result.returncode == 0 or len(errors) == 0,
             errors=errors,
-            warnings=warnings
+            warnings=warnings,
+            output_files=output_files
         )
 
     except subprocess.SubprocessError as e:
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
         return J2CJResult(
             success=False,
             errors=[f"Subprocess error: {e}"],
             warnings=[]
         )
     except Exception as e:
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
         return J2CJResult(
             success=False,
             errors=[f"Unexpected error: {e}"],
             warnings=[]
         )
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
+
+
+def _move_generated_files(temp_dir: str, output_dir: str, source_path: str) -> List[str]:
+    """
+    Move generated .cj files to output directory preserving source directory structure.
+
+    Args:
+        temp_dir: Temporary directory where j2cj generated files
+        output_dir: Final output directory (cangjie_output)
+        source_path: Original Java source path
+
+    Returns:
+        List of moved .cj file paths
+    """
+    moved_files = []
+    source_path_abs = os.path.abspath(source_path)
+
+    # Find all .cj files in temp directory
+    for cj_file in Path(temp_dir).rglob('*.cj'):
+        cj_file_str = str(cj_file)
+
+        try:
+            # Read file content to check for generated patterns
+            with open(cj_file_str, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Skip empty or trivial files
+            if len(content.strip()) < 10:
+                continue
+
+            # Determine output path preserving source structure
+            rel_path = cj_file.relative_to(temp_dir)
+            output_file = os.path.join(output_dir, str(rel_path))
+
+            # Create output directory structure
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+            # Move file
+            shutil.move(cj_file_str, output_file)
+            moved_files.append(output_file)
+
+        except Exception as e:
+            # Log but continue with other files
+            pass
+
+    # Also move cjpm.toml and other config files
+    for config_file in Path(temp_dir).glob('cjpm.toml'):
+        output_file = os.path.join(output_dir, config_file.name)
+        shutil.move(str(config_file), output_file)
+
+    return moved_files
 
 
 def _get_java_files(path: str) -> List[str]:
@@ -157,7 +242,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Run j2cj for Java to Cangjie translation")
     parser.add_argument("source_path", help="Path to Java source files or directory")
-    parser.add_argument("-o", "--output", required=True, help="Output directory")
+    parser.add_argument("-o", "--output", help="Output directory (default: ./cangjie_output)")
     parser.add_argument("--j2cj", help="Path to j2cj.jar")
     parser.add_argument("-cp", "--classpath", help="Classpath")
     parser.add_argument("-sp", "--sourcepath", help="Source path")
@@ -186,6 +271,8 @@ def main():
     else:
         if result.success:
             print("Translation completed successfully")
+            print(f"Output directory: {os.path.abspath('cangjie_output' if args.output is None else args.output)}")
+            print(f"Generated files: {len(result.output_files)}")
             if result.warnings:
                 print(f"\nWarnings ({len(result.warnings)}):")
                 for w in result.warnings:

@@ -42,7 +42,7 @@ python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyl
 **Options**:
 | Option | Description |
 |--------|-------------|
-| `-o, --output` | Output directory (required) |
+| `-o, --output` | Output directory (default: ./cangjie_output) |
 | `--j2cj` | Path to j2cj.jar (optional, defaults to j2cj_tool/j2cj.jar) |
 | `-cp, --classpath` | Java classpath |
 | `-sp, --sourcepath` | Java source path |
@@ -51,6 +51,11 @@ python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyl
 | `-v, --verbose` | Verbose output |
 | `--encoding` | Source file encoding |
 | `--json` | Output results as JSON |
+
+**输出目录说明**:
+- 生成的Cangjie代码默认输出到当前工作目录的 `cangjie_output` 目录
+- 生成的文件会按照原Java源码的目录结构存放
+- 可通过 `-o` 参数指定自定义输出目录
 
 **示例**:
 ```bash

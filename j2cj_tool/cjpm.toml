@@ -2,7 +2,7 @@
   cjc-version = "1.0.0"
   compile-option = "--int-overflow=wrapping"
   description = ""
-  name = "com"
+  name = "net"
   output-type = "executable"
   src-dir = "src"
   target-dir = "build"
