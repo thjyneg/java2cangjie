@@ -1,0 +1,13 @@
+[dependencies]
+
+[package]
+  cjc-version = "1.0.0"
+  compile-option = "--int-overflow=wrapping -Woff unused"
+  description = "Java to Cangjie translator Android library"
+  name = "j2cjlib_android"
+  output-type = "static"
+  src-dir = "src"
+  target-dir = "build"
+  version = "1.0.0"
+  [package.package_configuration]
+  [package.scripts]

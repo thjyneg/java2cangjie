@@ -1,0 +1,11 @@
+[package]
+  cjc-version = "1.0.0"
+  compile-option = "--int-overflow=wrapping"
+  description = ""
+  name = "com"
+  output-type = "executable"
+  src-dir = "src"
+  target-dir = "build"
+  version = "1.0.0"
+  [package.package_configuration]
+  [package.scripts]
