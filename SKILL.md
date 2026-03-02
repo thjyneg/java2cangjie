@@ -101,11 +101,29 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 
 分析j2cj翻译结果中的错误和警告，**必须**基于skill中的Cangjie API文档和示例文档来制定修改方案。
 
+**🔴 第一步：查找j2cj标记的问题**
+
+j2cj转换工具会在无法直接转换的代码处添加 `<--` 标记。**必须首先**使用 Grep 查找所有问题：
+
+```bash
+# 查找所有j2cj标记的问题
+Grep: pattern="<--" path="<output_dir>" glob="*.cj"
+```
+
+**常见问题标记示例**：
+```
+// <-- Missing mapping for java.util.Collections member: singletonList -->
+// <-- Missing mapping for java.lang.System member: currentTimeMillis -->
+// <-- Java keyword 'synchronized' not supported -->
+// <-- Generic wildcard '? extends T' not supported -->
+```
+
 **分析流程**:
-1. 识别所有错误类型（类型未找到、方法未找到、语法错误、空值问题等）
-2. **必须**在`docs/`目录中查找对应的类型/方法/语法
-3. **必须**参考`docs/libs/*/samples/`中的示例代码
-4. 为每个错误提供详细的修改方案，包括：
+1. **首先**使用 Grep 查找 `<--` 标记，识别所有j2cj无法转换的问题
+2. 识别所有错误类型（类型未找到、方法未找到、语法错误、空值问题等）
+3. **必须**在`docs/`目录中查找对应的类型/方法/语法
+4. **必须**参考`docs/libs/*/samples/`中的示例代码
+5. 为每个错误提供详细的修改方案，包括：
    - 问题分析
    - 对应的Cangjie API/语法
    - 参考的文档路径和示例代码
@@ -238,7 +256,7 @@ digraph fix_compile_loop {
 
 1. **分析文件依赖关系**（详见下方"依赖分析"章节）
 2. **生成自下而上的TODO清单**（从叶子节点到根节点）
-3. **识别`<!-- -->`标记的不支持代码**（详见下方"识别j2cj不支持的代码"）
+3. **识别`<--`标记的不支持代码**（详见下方"识别j2cj不支持的代码"）
 4. **创建adapters文件夹**，为外部依赖API创建mock接口
 5. **按照TODO清单自下而上依次修复和编译**：
    - 从第1层（无依赖）开始
@@ -348,29 +366,33 @@ cangjie_output/
 3. 第3层: UserService.cj, DataService.cj
 
 **识别j2cj不支持的代码**:
-j2cj转换工具对于无法直接转换的Java代码，会用`<!-- -->`注释包裹，需要AI识别并修复。
+j2cj转换工具对于无法直接转换的Java代码，会用`<-- ... -->`标记，需要AI识别并修复。
 
 **查找待修复代码**:
 ```bash
-# 查找所有包含 <!-- --> 标记的文件
-grep -r "<!-- " <output_dir> --include="*.cj" -l
+# 查找所有包含 <-- 标记的文件（推荐使用 Grep 工具）
+Grep: pattern="<--" path="<output_dir>" glob="*.cj"
 
-# 查看具体的标记内容
-grep -r "<!-- " <output_dir> --include="*.cj" -A 2 -B 2
+# 查看具体的标记内容（带上下文）
+Grep: pattern="<--" path="<output_dir>" glob="*.cj" -C 3
 ```
 
 **标记示例和处理**:
 ```cj
 // 示例1: 不支持的Java API
-// <!-- TODO: Java方法 'System.currentTimeMillis()' 无直接对应，需要替换 -->
+// <-- Missing mapping for java.util.Collections member: singletonList -->
+// 原代码: let list = Collections.singletonList(item)
+
+// 示例2: 不支持的系统方法
+// <-- Missing mapping for java.lang.System member: currentTimeMillis -->
 // 原代码: let time = System.currentTimeMillis()
 
-// 示例2: 不支持的语法结构
-// <!-- TODO: Java的synchronized关键字需要改用Cangjie的并发机制 -->
+// 示例3: 不支持的语法结构
+// <-- Java keyword 'synchronized' not supported -->
 // synchronized(this) { ... }
 
-// 示例3: 复杂泛型
-// <!-- TODO: Java泛型通配符 '? extends T' 在Cangjie中需要特殊处理 -->
+// 示例4: 复杂泛型
+// <-- Generic wildcard '? extends T' not supported -->
 ```
 
 **外部依赖Mock策略**:

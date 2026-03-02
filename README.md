@@ -12,42 +12,6 @@ Java到Cangjie代码翻译技能，集成j2cj工具和仓颉语言完整文档�
 
 ## 快速开始
 
-### 基本翻译
-
-```bash
-python3 scripts/j2cj_runner.py <java_source_dir> -o <output_dir>
-```
-
-### 示例
-
-```bash
-# 基本翻译（默认输出到 ./cangjie_output）
-python3 scripts/j2cj_runner.py ./java/src --mode codestyle
-
-# 指定输出目录
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output --mode codestyle
-
-# 带classpath的翻译
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -cp ./lib/* --mode codestyle
-
-# 详细输出
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyle --json
-```
-
-## 命令选项
-
-| 选项 | 说明 |
-|------|------|
-| `-o, --output` | 输出目录（默认：`./cangjie_output`） |
-| `--j2cj` | j2cj.jar路径（可选，默认使用内置工具） |
-| `-cp, --classpath` | Java类路径 |
-| `-sp, --sourcepath` | Java源代码路径 |
-| `-mp, --module-path` | Java模块路径 |
-| `--mode` | 翻译模式：codestyle 或 semantic |
-| `-v, --verbose` | 详细输出 |
-| `--encoding` | 源文件编码 |
-| `--json` | 以JSON格式输出结果 |
-
 ## 翻译工作流
 
 本技能强制执行严格的5步翻译流程，确保翻译质量和错误处理：
