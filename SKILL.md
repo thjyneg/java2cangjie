@@ -63,6 +63,31 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 - 生成的文件会按照原Java源码的目录结构存放
 - 使用 `-d` 参数指定自定义输出目录
 
+**⚠️ 重要：j2cj转换后的项目结构**
+
+j2cj转换后会生成**完整的项目结构**，包括：
+- `cjpm.toml` - Cangjie包管理配置文件
+- `src/` - 源代码目录（包含正确的包名结构）
+
+```
+<output_dir>/
+├── cjpm.toml              # 包管理配置（自动生成）
+└── src/                   # 源代码目录
+    └── <package_path>/    # 按包名组织的.cj文件
+```
+
+**🔴 关键规则：cjpm命令必须在转换后的项目根目录下执行**
+
+所有 `cjpm` 命令（如 `cjpm build`、`cjpm update`、`cjpm clean`）**必须**在包含 `cjpm.toml` 的目录下运行：
+
+```bash
+# 正确 ✅：先cd到输出目录，再执行cjpm命令
+cd <output_dir> && cjpm build
+
+# 错误 ❌：在其他目录执行cjpm命令
+cjpm build  # 如果当前目录没有cjpm.toml，会失败
+```
+
 **示例**:
 ```bash
 # 翻译单个文件
@@ -130,11 +155,7 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 
 如果在上述所有步骤中都未找到相关文档：
 1. 记录警告："未找到 <类型/方法> 的官方文档"
-2. 尝试在 references/ 目录的索引文件中查找：
-   - `references/extra_index.md`（基础类型索引）
-   - `references/packages_index.md`（标准库包索引）
-   - `references/manual_index.md`（语言手册索引）
-3. 如仍无法找到，在修改方案中明确说明："基于Cangjie语言通用规则推断，缺少官方文档参考"
+2. 在修改方案中明确说明："基于Cangjie语言通用规则推断，缺少官方文档参考"
 
 ### Step 3: 用户确认
 
@@ -387,6 +408,10 @@ public class ThirdPartyLib {
 
 **自下而上编译流程**（强制执行）:
 
+**🔴 重要：所有cjpm命令必须在转换后的项目根目录（包含cjpm.toml的目录）下执行**
+
+j2cj转换后的项目自带完整项目结构（cjpm.toml + src/），包名和目录结构都是正确的。执行任何cjpm命令前，必须先cd到输出目录。
+
 编译也必须按照依赖顺序自下而上进行，下层编译通过后再处理上层。
 
 **编译顺序（必须严格执行）**:
@@ -478,11 +503,16 @@ echo $?  # 0表示成功
 ```
 
 **cjpm build 详细步骤**:
+
+**🔴 必须在转换后的项目根目录执行**
+
+j2cj转换后的项目自带完整结构（cjpm.toml + src/），所有cjpm命令**必须**在项目根目录（即包含cjpm.toml的目录）下执行。
+
 ```bash
-# 1. 确定输出目录（默认为 cangjie_output）
+# 1. 切换到输出目录（项目根目录，包含cjpm.toml）
 cd <output_dir>
 
-# 2. 确认 cjpm.toml 存在
+# 2. 确认 cjpm.toml 存在（必须存在才能编译）
 ls cjpm.toml
 
 # 3. 执行编译
@@ -636,11 +666,11 @@ Grep: pattern="Option" path="docs/extra/Option.md"
 
 ### Quick Lookup
 
-**基础类型**: 见 [extra_index.md](references/extra_index.md) - Array, ArrayList, HashMap, String, Option, Tuple等
+**基础类型**: 在 `docs/extra/` 目录中查找 - Array, ArrayList, HashMap, String, Option, Tuple等
 
-**标准库包**: 见 [packages_index.md](references/packages_index.md) - collection, io, net, sync, time等
+**标准库包**: 在 `docs/libs/std/` 目录中查找 - collection, io, net, sync, time等
 
-**语言手册**: 见 [manual_index.md](references/manual_index.md) - 基础概念、类接口、泛型、并发、错误处理等
+**语言手册**: 在 `docs/manual/` 目录中查找 - 基础概念、类接口、泛型、并发、错误处理等
 
 ### Search Patterns（强制性执行）
 
@@ -796,13 +826,6 @@ Bundled j2cj translation tool:
 - **j2cjlib/**: Cangjie library dependencies
 - **j2cjlib_android/**: Android-specific library dependencies
 - **j2cj-user-guide-en.pdf**: J2CJ user guide documentation
-
-### references/
-Cangjie documentation indices:
-
-- **packages_index.md**: Standard library and extension library package index
-- **extra_index.md**: Basic types index
-- **manual_index.md**: Language manual topic index
 
 ### docs/
 Complete Cangjie documentation corpus including:
