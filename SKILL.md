@@ -166,6 +166,53 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 
 用户确认后，执行修改并尝试编译。如有错误，继续修正，最多进行20轮迭代。
 
+**⚠️ 核心原则：修改-编译循环（强制执行，不可跳过）**
+
+这是一个**严格的循环过程**，每次修改代码后必须立即编译验证，绝不允许批量修改后再编译。
+
+```dot
+digraph fix_compile_loop {
+    rankdir=TB;
+    node [shape=box, style=rounded];
+
+    "选择待修复文件（按依赖顺序）" [shape=box];
+    "修改代码" [shape=box];
+    "执行 cjpm build" [shape=box, style=filled, fillcolor=lightblue];
+    "检查 exit code" [shape=diamond];
+    "编译成功 ✓" [shape=box, style=filled, fillcolor=lightgreen];
+    "编译失败 ✗" [shape=box, style=filled, fillcolor=lightcoral];
+    "记录完整错误信息" [shape=box];
+    "分析错误原因" [shape=box];
+    "回到 Step 2 查找文档" [shape=box];
+    "还有下一层?" [shape=diamond];
+    "处理下一层" [shape=box];
+    "完成 ✓" [shape=doublecircle, style=filled, fillcolor=lightgreen];
+
+    "选择待修复文件（按依赖顺序）" -> "修改代码";
+    "修改代码" -> "执行 cjpm build";
+    "执行 cjpm build" -> "检查 exit code";
+    "检查 exit code" -> "编译成功 ✓" [label=" = 0"];
+    "检查 exit code" -> "编译失败 ✗" [label=" ≠ 0"];
+
+    "编译失败 ✗" -> "记录完整错误信息";
+    "记录完整错误信息" -> "分析错误原因";
+    "分析错误原因" -> "回到 Step 2 查找文档";
+    "回到 Step 2 查找文档" -> "修改代码" [label="循环"];
+
+    "编译成功 ✓" -> "还有下一层?";
+    "还有下一层?" -> "处理下一层" [label="是"];
+    "还有下一层?" -> "完成 ✓" [label="否"];
+    "处理下一层" -> "修改代码";
+}
+```
+
+**循环规则（铁律，不可违反）**：
+
+1. **修改 → 编译 → 检查 → 重复** 是一个原子操作，不可拆分
+2. **每次修改后必须立即编译**，禁止批量修改后统一编译
+3. **编译失败必须循环修复**，直到成功才能继续
+4. **记录每一轮的完整信息**，包括修改内容、编译命令、错误输出
+
 **编译和修正流程**（必须严格执行）:
 
 1. **分析文件依赖关系**（详见下方"依赖分析"章节）
