@@ -205,18 +205,19 @@ Grep: pattern="<--" path="<output_dir>" glob="*.cj"
 
 用户确认后，执行修改并尝试编译。如有错误，继续修正，最多进行20轮迭代。
 
-**🔴 核心流程：依赖分析 → TODO清单 → 依次循环**
+**🔴 核心流程：依赖分析 → TodoWrite清单 → 依次循环**
 
 编译修正**必须**按照以下顺序执行，不可跳过任何步骤：
 
 ```
-1. 分析包依赖关系 → 2. 生成TODO清单 → 3. 按清单依次修复和编译
+1. 分析包依赖关系 → 2. 使用TodoWrite创建清单 → 3. 按清单依次修复和编译
 ```
 
 **必须先完成依赖分析和TODO清单生成**，然后才能开始修改代码。这确保了：
 - 下层依赖先被修复，避免上层修改无效
 - 编译顺序正确，避免循环依赖问题
 - 每层修改都能通过编译验证
+- 使用 TodoWrite 工具跟踪修复进度
 
 **⚠️ 核心原则：修改-编译循环（强制执行，不可跳过）**
 
@@ -268,13 +269,15 @@ digraph fix_compile_loop {
 **编译和修正流程**（必须严格执行）:
 
 1. **分析文件依赖关系**（详见下方"依赖分析"章节）
-2. **生成自下而上的TODO清单**（从叶子节点到根节点）
+2. **使用 TodoWrite 工具生成自下而上的TODO清单**（从叶子节点到根节点）
 3. **识别`<--`标记的不支持代码**（详见下方"识别j2cj不支持的代码"）
 4. **创建adapters文件夹**，为外部依赖API创建mock接口
 5. **按照TODO清单自下而上依次修复和编译**：
    - 从第1层（无依赖）开始
+   - 使用 TodoWrite 标记当前任务为 in_progress
    - **每次修改后必须立即执行 `cjpm build` 进行编译**
    - 确认当前层编译通过
+   - 使用 TodoWrite 标记当前任务为 completed
    - 再处理下一层
 6. **收集编译错误和警告信息**：
    - **必须记录每次编译的完整输出**
@@ -323,13 +326,13 @@ digraph fix_compile_loop {
 **依赖分析**:
 在修复错误前，必须先分析Cangjie文件之间的依赖关系，确定修复顺序。
 
-**依赖分析方法**:
+**依赖分析方法**（使用 Grep 工具）:
 ```bash
 # 方法1: 通过import语句分析依赖
-grep -r "^import" <output_dir> --include="*.cj" | sort | uniq
+Grep: pattern="^import" path="<output_dir>" glob="*.cj"
 
-# 方法2: 分析目录结构和包关系
-find <output_dir> -name "*.cj" -type f | xargs grep "^import"
+# 方法2: 查找所有本地包导入
+Grep: pattern="^import.*\\.(common|service|utils|model)" path="<output_dir>" glob="*.cj"
 ```
 
 **生成依赖图**:
@@ -338,7 +341,24 @@ find <output_dir> -name "*.cj" -type f | xargs grep "^import"
 3. 识别叶子节点：没有依赖其他本地文件的文件
 4. 拓扑排序：确定从叶子到根的修复顺序
 
-**TODO清单格式**:
+**🔴 必须使用 TodoWrite 工具创建 TODO 清单**:
+
+依赖分析完成后，**必须**使用 TodoWrite 工具创建 TODO 清单，按依赖层级组织任务。
+
+**TodoWrite 格式要求**:
+```json
+{
+  "todos": [
+    {"content": "修复 common/Constants.cj (无依赖)", "status": "pending", "activeForm": "修复 Constants.cj"},
+    {"content": "修复 common/utils/Helper.cj (无依赖)", "status": "pending", "activeForm": "修复 Helper.cj"},
+    {"content": "修复 service/BaseService.cj (依赖: Helper.cj)", "status": "pending", "activeForm": "修复 BaseService.cj"},
+    {"content": "修复 service/UserService.cj (依赖: BaseService.cj)", "status": "pending", "activeForm": "修复 UserService.cj"},
+    {"content": "整体编译验证", "status": "pending", "activeForm": "整体编译验证"}
+  ]
+}
+```
+
+**TODO清单格式示例**:
 ```
 === 依赖分析和TODO清单 ===
 
