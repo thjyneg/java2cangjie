@@ -117,14 +117,190 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 用户确认后，执行修改并尝试编译。如有错误，继续修正，最多进行20轮迭代。
 
 **编译和修正流程**:
-1. 应用用户确认的修改方案到生成的.cj文件
-2. **进入生成的代码目录**（包含`cjpm.toml`的目录）
-3. **执行 `cjpm build` 进行编译**
-4. 收集编译错误和警告信息
-5. 分析新错误，回到Step 2重新分析
-6. 重复Step 2-4，直到：
+1. **分析文件依赖关系**（详见下方"依赖分析"章节）
+2. **生成自下而上的TODO清单**（从叶子节点到根节点）
+3. **识别`<!-- -->`标记的不支持代码**（详见下方"识别j2cj不支持的代码"）
+4. **创建adapters文件夹**，为外部依赖API创建mock接口
+5. **按照TODO清单自下而上依次修复和编译**：
+   - 从第1层（无依赖）开始
+   - 确认当前层编译通过
+   - 再处理下一层
+6. **收集编译错误和警告信息**
+7. **分析新错误**，回到Step 2重新分析
+8. **重复Step 2-4**，直到：
    - 所有错误修复成功
    - 达到20轮上限
+
+**依赖分析**:
+在修复错误前，必须先分析Cangjie文件之间的依赖关系，确定修复顺序。
+
+**依赖分析方法**:
+```bash
+# 方法1: 通过import语句分析依赖
+grep -r "^import" <output_dir> --include="*.cj" | sort | uniq
+
+# 方法2: 分析目录结构和包关系
+find <output_dir> -name "*.cj" -type f | xargs grep "^import"
+```
+
+**生成依赖图**:
+1. 遍历所有.cj文件，提取import语句
+2. 建立文件依赖图：A imports B 表示 A依赖B
+3. 识别叶子节点：没有依赖其他本地文件的文件
+4. 拓扑排序：确定从叶子到根的修复顺序
+
+**TODO清单格式**:
+```
+=== 依赖分析和TODO清单 ===
+
+【第1层 - 无依赖文件】（优先修复）
+  - common/utils/Helper.cj
+  - common/Constants.cj
+
+【第2层 - 依赖第1层】
+  - service/BaseService.cj (依赖: common/utils/Helper.cj)
+
+【第3层 - 依赖第2层】
+  - service/UserService.cj (依赖: service/BaseService.cj)
+  - service/DataService.cj (依赖: common/utils/Helper.cj, service/BaseService.cj)
+
+【第4层 - 依赖第3层】
+  - main/Main.cj (依赖: service/UserService.cj, service/DataService.cj)
+
+修复顺序建议: 按层级从低到高依次修复
+```
+
+**依赖分析示例**:
+假设有以下文件结构：
+```
+cangjie_output/
+├── common/
+│   ├── Constants.cj        # 无依赖
+│   └── utils/
+│       └── Helper.cj       # 无依赖
+└── service/
+    ├── BaseService.cj      # import common.utils.Helper
+    ├── UserService.cj      # import service.BaseService
+    └── DataService.cj      # import common.utils.Helper, service.BaseService
+```
+
+生成的TODO清单（自下而上）：
+1. 第1层: Constants.cj, Helper.cj
+2. 第2层: BaseService.cj
+3. 第3层: UserService.cj, DataService.cj
+
+**识别j2cj不支持的代码**:
+j2cj转换工具对于无法直接转换的Java代码，会用`<!-- -->`注释包裹，需要AI识别并修复。
+
+**查找待修复代码**:
+```bash
+# 查找所有包含 <!-- --> 标记的文件
+grep -r "<!-- " <output_dir> --include="*.cj" -l
+
+# 查看具体的标记内容
+grep -r "<!-- " <output_dir> --include="*.cj" -A 2 -B 2
+```
+
+**标记示例和处理**:
+```cj
+// 示例1: 不支持的Java API
+// <!-- TODO: Java方法 'System.currentTimeMillis()' 无直接对应，需要替换 -->
+// 原代码: let time = System.currentTimeMillis()
+
+// 示例2: 不支持的语法结构
+// <!-- TODO: Java的synchronized关键字需要改用Cangjie的并发机制 -->
+// synchronized(this) { ... }
+
+// 示例3: 复杂泛型
+// <!-- TODO: Java泛型通配符 '? extends T' 在Cangjie中需要特殊处理 -->
+```
+
+**外部依赖Mock策略**:
+对于项目依赖的外部库API，创建`adapters`文件夹进行mock，保证编译通过。
+
+**adapters目录结构**:
+```
+<output_dir>/
+├── adapters/                    # 外部依赖mock目录
+│   ├── AndroidAdapter.cj       # Android API mock
+│   ├── ThirdPartyLib.cj        # 第三方库mock
+│   └── JvmApi.cj               # JVM特有API mock
+├── common/
+└── service/
+```
+
+**创建Mock接口**:
+```cj
+// adapters/ThirdPartyLib.cj
+// Mock第三方库接口，仅保证编译通过
+
+public class ThirdPartyLib {
+    // TODO: 实现真实的第三方库调用逻辑
+    public static func getInstance(): ThirdPartyLib {
+        // 占位实现
+        return ThirdPartyLib()
+    }
+
+    public func doSomething(input: String): String {
+        // 占位实现
+        return input
+    }
+}
+```
+
+**自下而上编译流程**:
+编译也必须按照依赖顺序自下而上进行，下层编译通过后再处理上层。
+
+**编译顺序**:
+```
+1. 【第1层】编译无依赖文件
+   cjpm build common/Constants.cj common/utils/Helper.cj
+   ↓ 确认编译通过
+2. 【第2层】编译依赖第1层的文件
+   cjpm build service/BaseService.cj
+   ↓ 确认编译通过
+3. 【第3层】编译依赖第2层的文件
+   cjpm build service/UserService.cj service/DataService.cj
+   ↓ 确认编译通过
+4. 【最终】整体编译
+   cjpm build
+```
+
+**单层编译命令**:
+```bash
+# 编译单个文件及其依赖
+cjpm build <file.cj>
+
+# 编译某个包
+cjpm build <package_name>
+
+# 检查编译是否成功
+echo $?  # 0表示成功
+```
+
+**编译失败处理策略**:
+1. **当前层编译失败**: 仅修复当前层的错误，不要修改下层代码
+2. **缺少外部依赖**: 在`adapters/`中创建mock接口
+3. **类型不匹配**: 检查下层API返回类型，调整上层调用代码
+4. **包导入失败**: 确认下层已编译成功，检查import路径
+
+**迭代修复模板**:
+```
+=== 第N轮修复 ===
+
+【当前层】: 第2层 - service/BaseService.cj
+
+【编译结果】: 失败
+  error: Type 'Helper' not found in service/BaseService.cj:15
+
+【依赖检查】:
+  ✗ common/utils/Helper.cj 未编译通过
+  → 先修复第1层
+
+【修复动作】:
+  1. 回退到第1层修复 Helper.cj
+  2. 第1层编译通过后，重新处理第2层
+```
 
 **cjpm build 详细步骤**:
 ```bash
