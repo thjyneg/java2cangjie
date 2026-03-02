@@ -86,6 +86,56 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
    - 参考的文档路径和示例代码
    - 具体的修改代码
 
+**强制性文档查找流程**（必须严格执行）：
+
+对于每个需要查找的类型/方法/语法，必须按以下顺序执行查找：
+
+**查找优先级顺序**：
+
+1. **第一步：在基础类型文档中查找**
+   - 使用 Grep 在 `docs/extra/` 目录搜索
+   - 命令：`Grep: pattern="<TypeName>" path="docs/extra/"`
+   - 适用于：ArrayList、HashMap、String、Option、Array 等基础类型
+
+2. **第二步：在标准库API文档中查找**
+   - 使用 Grep 在 `docs/libs/std/` 目录搜索
+   - 命令：`Grep: pattern="<TypeName>" path="docs/libs/std/"`
+   - 如未找到，尝试搜索方法名：`Grep: pattern="func <MethodName>|prop <MethodName>" path="docs/libs/std/"`
+
+3. **第三步：查找示例代码**
+   - 使用 Glob 查找相关包的 samples 目录
+   - 命令：`Glob: pattern="**/*samples/sample_<TypeName>*.md" path="docs/libs/"`
+   - 或使用 Grep 搜索所有 samples：`Grep: pattern="<TypeName>" path="docs/libs/*/*/samples/"`
+
+4. **第四步：在语言手册中查找**
+   - 使用 Grep 在 `docs/manual/` 目录搜索语言概念
+   - 命令：`Grep: pattern="<keyword>" path="docs/manual/"`
+   - 适用于：泛型、并发、错误处理、match 等语言特性
+
+5. **第五步：查找包概览文档**
+   - 定位到具体包的概览文档
+   - 文件路径：`docs/libs/std/<package>/<package>_package_overview.md`
+   - 例如：`docs/libs/std/collection/collection_package_overview.md`
+
+**查找结果记录要求**：
+
+每次查找必须记录以下信息：
+- 查找的关键词/类型名
+- 使用的工具（Grep/Glob/Read）
+- 查找的路径
+- 找到的文件列表（如果有）
+- 未找到时的警告信息
+
+**查找失败处理策略**：
+
+如果在上述所有步骤中都未找到相关文档：
+1. 记录警告："未找到 <类型/方法> 的官方文档"
+2. 尝试在 references/ 目录的索引文件中查找：
+   - `references/extra_index.md`（基础类型索引）
+   - `references/packages_index.md`（标准库包索引）
+   - `references/manual_index.md`（语言手册索引）
+3. 如仍无法找到，在修改方案中明确说明："基于Cangjie语言通用规则推断，缺少官方文档参考"
+
 ### Step 3: 用户确认
 
 将Step 2中的修改方案展示给用户，**必须**等待用户确认后才能进行修改。
@@ -116,20 +166,60 @@ java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsio
 
 用户确认后，执行修改并尝试编译。如有错误，继续修正，最多进行20轮迭代。
 
-**编译和修正流程**:
+**编译和修正流程**（必须严格执行）:
+
 1. **分析文件依赖关系**（详见下方"依赖分析"章节）
 2. **生成自下而上的TODO清单**（从叶子节点到根节点）
 3. **识别`<!-- -->`标记的不支持代码**（详见下方"识别j2cj不支持的代码"）
 4. **创建adapters文件夹**，为外部依赖API创建mock接口
 5. **按照TODO清单自下而上依次修复和编译**：
    - 从第1层（无依赖）开始
+   - **每次修改后必须立即执行 `cjpm build` 进行编译**
    - 确认当前层编译通过
    - 再处理下一层
-6. **收集编译错误和警告信息**
+6. **收集编译错误和警告信息**：
+   - **必须记录每次编译的完整输出**
+   - **必须记录编译是否成功（exit code）**
 7. **分析新错误**，回到Step 2重新分析
 8. **重复Step 2-4**，直到：
    - 所有错误修复成功
    - 达到20轮上限
+
+**重要：修改-编译迭代规则（强制执行）**：
+
+- **每次修改代码后，必须立即执行编译**
+  - 使用命令：`Bash: command="cd <output_dir> && cjpm build"`
+  - 检查编译结果：`echo $?`（0表示成功）
+
+- **编译成功的处理**：
+  - 记录："编译成功 ✓"
+  - 继续处理下一层或下一个错误
+
+- **编译失败的处理**：
+  - 记录完整的错误信息
+  - 分析错误原因
+  - 回到 Step 2 查找相关文档
+  - 修正错误后再次编译
+  - 重复此过程直到编译成功
+
+- **迭代记录格式**：
+  ```
+  === 第N轮修复 ===
+
+  【修改文件】: service/UserService.cj
+  【修改内容】: 将 ArrayList<String> 改为 ArrayList<String>
+  【修改原因】: Cangjie 泛型语法要求
+
+  【执行编译】:
+  命令: cd cangjie_output && cjpm build
+  结果: 失败 ✗
+
+  【编译错误】:
+  error: Type 'ArrayList' not found
+  --> service/UserService.cj:15:10
+
+  【下一步】: 查找 ArrayList 文档，添加正确的 import
+  ```
 
 **依赖分析**:
 在修复错误前，必须先分析Cangjie文件之间的依赖关系，确定修复顺序。
@@ -248,23 +338,50 @@ public class ThirdPartyLib {
 }
 ```
 
-**自下而上编译流程**:
+**自下而上编译流程**（强制执行）:
+
 编译也必须按照依赖顺序自下而上进行，下层编译通过后再处理上层。
 
-**编译顺序**:
+**编译顺序（必须严格执行）**:
 ```
 1. 【第1层】编译无依赖文件
-   cjpm build common/Constants.cj common/utils/Helper.cj
-   ↓ 确认编译通过
+   Bash: command="cd cangjie_output && cjpm build common/Constants.cj common/utils/Helper.cj"
+   ↓ 检查编译结果: echo $?
+   ↓ 确认编译通过（exit code = 0）
+
 2. 【第2层】编译依赖第1层的文件
-   cjpm build service/BaseService.cj
-   ↓ 确认编译通过
+   Bash: command="cd cangjie_output && cjpm build service/BaseService.cj"
+   ↓ 检查编译结果: echo $?
+   ↓ 确认编译通过（exit code = 0）
+
 3. 【第3层】编译依赖第2层的文件
-   cjpm build service/UserService.cj service/DataService.cj
-   ↓ 确认编译通过
+   Bash: command="cd cangjie_output && cjpm build service/UserService.cj service/DataService.cj"
+   ↓ 检查编译结果: echo $?
+   ↓ 确认编译通过（exit code = 0）
+
 4. 【最终】整体编译
-   cjpm build
+   Bash: command="cd cangjie_output && cjpm build"
+   ↓ 检查编译结果: echo $?
+   ↓ 确认编译通过（exit code = 0）
 ```
+
+**编译检查规则（强制执行）**:
+
+- 每次编译后必须检查 exit code：
+  - `echo $?` 返回 0 → 编译成功 ✓
+  - `echo $?` 返回非0 → 编译失败 ✗
+
+- 编译失败时必须：
+  1. 记录完整的错误输出
+  2. 分析错误原因
+  3. 修正代码
+  4. 重新编译
+  5. 重复直到成功
+
+- **禁止跳过编译步骤**：
+  - 修改代码后必须立即编译
+  - 不得假设修改正确
+  - 不得批量修改后统一编译
 
 **单层编译命令**:
 ```bash
@@ -284,13 +401,13 @@ echo $?  # 0表示成功
 3. **类型不匹配**: 检查下层API返回类型，调整上层调用代码
 4. **包导入失败**: 确认下层已编译成功，检查import路径
 
-**迭代修复模板**:
+**迭代修复模板**（强制执行）:
 ```
 === 第N轮修复 ===
 
 【当前层】: 第2层 - service/BaseService.cj
 
-【编译结果】: 失败
+【编译结果】: 失败 ✗
   error: Type 'Helper' not found in service/BaseService.cj:15
 
 【依赖检查】:
@@ -299,7 +416,18 @@ echo $?  # 0表示成功
 
 【修复动作】:
   1. 回退到第1层修复 Helper.cj
-  2. 第1层编译通过后，重新处理第2层
+  2. 修正 Helper.cj 代码
+  3. **执行编译**: Bash: command="cd cangjie_output && cjpm build common/utils/Helper.cj"
+  4. **检查结果**: echo $?
+  5. 确认编译通过后，重新处理第2层
+  6. **执行编译**: Bash: command="cd cangjie_output && cjpm build service/BaseService.cj"
+  7. **检查结果**: echo $?
+  8. 如失败，重复步骤2-7
+
+【修改记录】:
+  - 文件: common/utils/Helper.cj
+  - 修改: 添加了正确的 import 语句
+  - 编译: 成功 ✓
 ```
 
 **cjpm build 详细步骤**:
@@ -325,16 +453,24 @@ cjpm build
 - **依赖下载失败**: 运行 `cjpm update` 更新依赖
 - **编译缓存问题**: 运行 `cjpm clean` 清理后重新编译
 
-**第N轮迭代格式**:
+**第N轮迭代格式**（强制执行）:
 ```
 --- 迭代轮次: 3/20 ---
 
 修改应用：
 - [文件] 错误位置 -> 修正代码
 
+执行编译：
+- 命令: Bash: command="cd cangjie_output && cjpm build"
+- 检查: echo $?
+
 编译结果：
 - 成功/失败
 - 新错误: (列出错误)
+
+下一步：
+- [如成功] 继续处理下一层/下一个错误
+- [如失败] 分析错误，重新修正，再次编译
 
 是否继续下一轮？
 ```
@@ -459,53 +595,142 @@ Grep: pattern="Option" path="docs/extra/Option.md"
 
 **语言手册**: 见 [manual_index.md](references/manual_index.md) - 基础概念、类接口、泛型、并发、错误处理等
 
-### Search Patterns
+### Search Patterns（强制性执行）
+
+**重要：以下查找模式必须严格执行，不得跳过任何步骤。**
 
 根据查询类型使用相应搜索模式：
 
-#### 查找特定类型的API
-```
-Grep: pattern="<Type>" path="docs/libs/std/"
-```
-例如: 搜索 "ArrayList" 或 "HashMap"
+#### 查找特定类型的API（必须执行）
 
-#### 查找函数或方法
+**第一步：在基础类型文档中查找**
 ```
-Grep: pattern="func <name>|prop <name>|init\(" path="docs/"
+Grep: pattern="<TypeName>" path="docs/extra/"
 ```
 
-#### 查找示例代码
+**第二步：在标准库中查找**
+```
+Grep: pattern="<TypeName>" path="docs/libs/std/"
+```
+
+**例如**：查找 "ArrayList" 或 "HashMap"
+```bash
+# 先在基础类型中查找
+Grep: pattern="ArrayList" path="docs/extra/"
+
+# 如未找到，在标准库中查找
+Grep: pattern="ArrayList" path="docs/libs/std/"
+```
+
+#### 查找函数或方法（必须执行）
+
+**第一步：在标准库中查找函数定义**
+```
+Grep: pattern="func <MethodName>|prop <MethodName>" path="docs/libs/std/"
+```
+
+**第二步：在所有文档中查找**
+```
+Grep: pattern="func <MethodName>|prop <MethodName>|init\(" path="docs/"
+```
+
+**例如**：查找 "add" 方法
+```bash
+# 先在标准库中查找
+Grep: pattern="func add|prop add" path="docs/libs/std/"
+
+# 如未找到，在所有文档中查找
+Grep: pattern="func add|prop add|init\(" path="docs/"
+```
+
+#### 查找示例代码（必须执行）
+
+**第一步：使用 Glob 查找所有示例文件**
 ```
 Glob: pattern="**/*samples/*.md" path="docs/libs/"
 ```
 
-#### 查找语言概念
+**第二步：使用 Grep 在 samples 目录中搜索特定类型**
+```
+Grep: pattern="<TypeName>" path="docs/libs/*/*/samples/"
+```
+
+**例如**：查找 ArrayList 的示例
+```bash
+# 方法1：列出所有示例文件
+Glob: pattern="**/*samples/*.md" path="docs/libs/"
+
+# 方法2：在 samples 中搜索 ArrayList
+Grep: pattern="ArrayList" path="docs/libs/*/*/samples/"
+```
+
+#### 查找语言概念（必须执行）
+
+**第一步：在语言手册中查找**
 ```
 Grep: pattern="<keyword>" path="docs/manual/"
 ```
-例如: 搜索 "match", "Option", "泛型"
 
-#### 查找特定包的概览
+**第二步：如果手册中未找到，在所有文档中搜索**
 ```
-docs/libs/std/<package>/<package>_package_overview.md
+Grep: pattern="<keyword>" path="docs/"
+```
+
+**例如**：查找 "match", "泛型", "Option"
+```bash
+# 先在语言手册中查找
+Grep: pattern="match" path="docs/manual/"
+
+# 如未找到，在所有文档中搜索
+Grep: pattern="match" path="docs/"
+```
+
+#### 查找特定包的概览（必须执行）
+
+**直接读取包概览文档**
+```
+Read: file_path="docs/libs/std/<package>/<package>_package_overview.md"
+```
+
+**例如**：查找 collection 包的概览
+```bash
+Read: file_path="docs/libs/std/collection/collection_package_overview.md"
+```
+
+**查找包的API文档**
+```
+Read: file_path="docs/libs/std/<package>/<package>_package_api/<package>_package_class.md"
+```
+
+**查找包的示例**
+```
+Glob: pattern="**/<package>_package_samples/*.md" path="docs/libs/std/"
 ```
 
 ### Documentation Structure
 
 ```
 docs/
-├── extra/              # 基础类型和工具
-├── libs/std/           # 标准库
-│   └── <package>/
-│       ├── *_package_overview.md      # 包概览
-│       ├── *_package_api/            # API文档
-│       │   ├── *_package_class.md
-│       │   ├── *_package_function.md
-│       │   └── *_package_interface.md
-│       └── *_package_samples/        # 示例代码
-├── libs/stdx/          # 扩展库
-└── manual/source_zh_cn/  # 语言手册
+├── extra/              # 基础类型和工具（Array.md, ArrayList.md, HashMap.md, String.md, Option.md等）
+├── libs/               # 标准库
+│   ├── std/            # 标准库包（collection, io, net, sync, time等）
+│   │   └── <package>/
+│   │       ├── <package>_package_overview.md      # 包概览
+│   │       ├── <package>_package_api/            # API文档目录
+│   │       │   ├── <package>_package_class.md
+│   │       │   ├── <package>_package_function.md
+│   │       │   └── <package>_package_interface.md
+│   │       └── <package>_package_samples/        # 示例代码目录
+│   │           └── sample_*.md                   # 示例文件（如sample_arraylist_add.md）
+│   └── stdx/           # 扩展库
+└── manual/
+    └── source_zh_cn/   # 语言手册（中文版）
 ```
+
+**重要说明**：
+- 示例文件命名格式为 `sample_*.md`（如 `sample_arraylist_add.md`），不是 `*_package_*.md` 格式
+- 所有API文档都在 `<package>_package_api/` 目录下
+- 每个包都有独立的概览文档和示例目录
 
 ## Post-Translation Verification
 
