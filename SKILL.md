@@ -12,19 +12,22 @@ Java到Cangjie代码翻译技能，集成j2cj工具和仓颉语言文档，提�
 ### 翻译Java项目
 
 ```bash
-python3 scripts/j2cj_runner.py <java_source_dir> -o <output_dir> [options]
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d <output_dir> [options] <java_source_files>
 ```
 
 **示例**:
 ```bash
-# 基本翻译
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output --mode codestyle
+# 基本翻译（单个文件）
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output --mode codestyle ./java/src/Main.java
+
+# 翻译多个文件
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output --mode codestyle ./java/src/*.java
 
 # 带classpath的翻译
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -cp ./lib/* --mode codestyle
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output -cp ./lib/* --mode codestyle ./java/src/*.java
 
 # 详细输出
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyle --json
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output -verbose --mode codestyle ./java/src/*.java
 ```
 
 ## Translation Workflow
@@ -33,7 +36,12 @@ python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyl
 
 ### Step 1: j2cj转换
 
-使用 `scripts/j2cj_runner.py` 执行初始翻译。
+使用 j2cj.jar 执行初始翻译。
+
+**命令格式**:
+```bash
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main [options] <source_files>
+```
 
 **Translation Modes**:
 - **codestyle**: 生成符合Cangjie习惯的代码（推荐）
@@ -42,24 +50,26 @@ python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output -v --mode codestyl
 **Options**:
 | Option | Description |
 |--------|-------------|
-| `-o, --output` | Output directory (default: ./cangjie_output) |
-| `--j2cj` | Path to j2cj.jar (optional, defaults to j2cj_tool/j2cj.jar) |
-| `-cp, --classpath` | Java classpath |
-| `-sp, --sourcepath` | Java source path |
-| `-mp, --module-path` | Java module path |
-| `--mode` | Translation mode: codestyle or semantic |
-| `-v, --verbose` | Verbose output |
-| `--encoding` | Source file encoding |
-| `--json` | Output results as JSON |
+| `-d <dir>, --dest <dir>` | 目标目录，放置生成的文件（默认: 当前目录） |
+| `-s <path>, --sourcepath <path>` | Java源码路径 |
+| `-cp <path>, --classpath <path>` | Java classpath |
+| `-mp <path>, --module-path <path>` | Java module path |
+| `-m <mode>, --mode <mode>` | 翻译模式: codestyle 或 semantic |
+| `-encoding <enc>` | 源文件编码 |
+| `-verbose` | 详细输出 |
 
 **输出目录说明**:
-- 生成的Cangjie代码默认输出到当前工作目录的 `cangjie_output` 目录
+- 生成的Cangjie代码默认输出到当前目录
 - 生成的文件会按照原Java源码的目录结构存放
-- 可通过 `-o` 参数指定自定义输出目录
+- 使用 `-d` 参数指定自定义输出目录
 
 **示例**:
 ```bash
-python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output --mode codestyle
+# 翻译单个文件
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output --mode codestyle ./java/src/Main.java
+
+# 翻译目录下所有Java文件
+java --patch-module jdk.compiler=j2cj_tool/j2cj.jar -m jdk.compiler/com.excelsior.j2cj.main.Main -d ./cangjie_output -s ./java/src --mode codestyle ./java/src/**/*.java
 ```
 
 ### Step 2: 分析错误并输出修改方案
@@ -108,12 +118,36 @@ python3 scripts/j2cj_runner.py ./java/src -o ./cangjie_output --mode codestyle
 
 **编译和修正流程**:
 1. 应用用户确认的修改方案到生成的.cj文件
-2. 尝试使用cjc编译（如果可用）
-3. 收集编译错误和j2cj运行时错误
-4. 分析新错误，回到Step 2重新分析
-5. 重复Step 2-4，直到：
+2. **进入生成的代码目录**（包含`cjpm.toml`的目录）
+3. **执行 `cjpm build` 进行编译**
+4. 收集编译错误和警告信息
+5. 分析新错误，回到Step 2重新分析
+6. 重复Step 2-4，直到：
    - 所有错误修复成功
    - 达到20轮上限
+
+**cjpm build 详细步骤**:
+```bash
+# 1. 确定输出目录（默认为 cangjie_output）
+cd <output_dir>
+
+# 2. 确认 cjpm.toml 存在
+ls cjpm.toml
+
+# 3. 执行编译
+cjpm build
+
+# 4. 如果有依赖问题，先更新依赖
+cjpm update
+
+# 5. 重新编译
+cjpm build
+```
+
+**常见编译问题处理**:
+- **cjpm.toml 不存在**: 检查输出目录是否正确，或手动创建 cjpm.toml
+- **依赖下载失败**: 运行 `cjpm update` 更新依赖
+- **编译缓存问题**: 运行 `cjpm clean` 清理后重新编译
 
 **第N轮迭代格式**:
 ```
@@ -307,17 +341,13 @@ docs/
 
 ## Resources
 
-### scripts/
-Executable code for j2cj translation:
-
-- **j2cj_runner.py**: Main script for running j2cj with error collection
-
 ### j2cj_tool/
 Bundled j2cj translation tool:
 
 - **j2cj.jar**: Java to Cangjie translation tool (J2CJ 1.7.99)
 - **j2cjlib/**: Cangjie library dependencies
 - **j2cjlib_android/**: Android-specific library dependencies
+- **j2cj-user-guide-en.pdf**: J2CJ user guide documentation
 
 ### references/
 Cangjie documentation indices:
