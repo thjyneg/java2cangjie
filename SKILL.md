@@ -1,193 +1,97 @@
 ---
 name: java2cangjie
-description: "Use when translating Java code to Cangjie (仓颉), fixing j2cj translation errors, or resuming interrupted translation tasks. Keywords: j2cj, 翻译, 转换, ArrayList, HashMap, Option, 泛型, 恢复"
+description: "Use when translating Java code/projects to Cangjie (仓颉), fixing j2cj translation errors with <-- --> markers, or looking up Cangjie APIs for Java equivalents. Keywords: j2cj, Java to Cangjie, 仓颉翻译, <-- Missing mapping"
 ---
 
 # Java to Cangjie Translation
 
-Java到仓颉代码翻译技能，集成j2cj工具和完整文档，支持任务持久化和断点续传。
-
-## When to Use
-
-- 将Java项目/文件翻译为Cangjie
-- 配置j2cj翻译选项 (mode, classpath等)
-- 修复j2cj翻译后的编译错误
-- **恢复中断的翻译任务**
-- 查找Cangjie等效API和语法
+使用 j2cj 工具将 Java 代码翻译为仓颉 (Cangjie)，并修复翻译错误。
 
 ## Quick Start
 
-### 方式一：自动化工作流（推荐）
-
 ```bash
-# 一键完成翻译、分析、生成Adapter
-python3 scripts/j2cj_workflow.py ./java/src -o ./cangjie_output
+# 1. 生成文件列表
+find src -name "*.java" > /tmp/files.txt
 
-# 带外部依赖
-python3 scripts/j2cj_workflow.py ./java/src -o ./output -cp "./lib/*"
-```
-
-**生成内容：**
-- `error_analysis_report.md` - 错误分析报告（表格形式）
-- `adapters/*.cj` - Adapter stub类
-- `adapters.cjmap` - cjmap映射文件
-
-详见 [automation](subskills/automation/SKILL.md) skill
-
-### 方式二：手动执行
-
-```bash
-# 基本翻译
+# 2. 执行翻译
 java --patch-module jdk.compiler=j2cj_tool/j2cj.jar \
-  -m jdk.compiler/com.excelsior.j2cj.main.Main \
-  -d ./cangjie_output --mode codestyle ./java/src/*.java
+     -m jdk.compiler/com.excelsior.j2cj.main.Main \
+     -d ./cangjie_output -mode codestyle \
+     @/tmp/files.txt
 
-# 带classpath翻译
-java --patch-module jdk.compiler=j2cj_tool/j2cj.jar \
-  -m jdk.compiler/com.excelsior.j2cj.main.Main \
-  -d ./cangjie_output -cp ./lib/* --mode codestyle ./java/src/*.java
+# 3. 找到 cjpm.toml 位置并编译
+find ./cangjie_output -name "cjpm.toml"
+cd ./cangjie_output/<root_package> && cjpm build
 ```
 
-**Translation Modes**:
-- `codestyle`: 生成符合Cangjie习惯的代码（推荐）
-- `semantic`: 保持Java原有语义
+## Core Rules
 
-## 任务持久化
+### ⚠️ j2cj 命令注意事项
+| 问题 | 错误 | 正确 |
+|------|------|------|
+| 参数格式 | `--mode codestyle` | `-mode codestyle` |
+| 文件指定 | `*.java` 或 `**/*.java` | `@/tmp/files.txt` |
+| 工作目录 | 任意目录 | 目标项目根目录 |
 
-**每个翻译任务自动创建TODO清单，支持中断后恢复：**
-
+### 🔴 编译目录规则
+cjpm 命令必须在包含 `cjpm.toml` 的目录执行：
 ```
-=== Java2Cangjie 翻译任务 ===
-当前步骤: Step 4.3 (编译修正)
-已完成: j2cj转换, 错误分析, 用户确认
-待完成: 编译修正 (3/6 文件), 生成报告
-```
-
-**Checkpoint文件位置**: `<output_dir>/.java2cangjie_checkpoint.md`
-
-**恢复中断任务**:
-```
-继续修复 UserService.cj
+cangjie_output/
+└── net/              # ← 根包目录
+    ├── cjpm.toml     # ← 在这里执行 cjpm build
+    └── src/...
 ```
 
-详见 [checkpoint模板](templates/checkpoint.md)
-
-## Workflow Overview
-
-**强制执行5步流程** (详见 [workflow](subskills/workflow/SKILL.md)):
+## Error Fix Workflow
 
 ```dot
-digraph workflow {
-    rankdir=LR;
-    node [shape=box, style=rounded];
-    "Step 1: j2cj转换" -> "Step 2: 分析错误" -> "Step 3: 用户确认" -> "Step 4: 编译修正" -> "Step 5: 输出报告";
-    "每步完成" -> "更新TODO状态" [style=dashed];
+digraph fix {
+    rankdir=TB;
+    "Grep 查找 <-- 标记" -> "查 Cangjie 文档" -> "修改代码";
+    "修改代码" -> "cjpm build";
+    "cjpm build" -> "成功?" [shape=diamond];
+    "成功?" -> "下一错误" [label="是"];
+    "成功?" -> "分析错误\n修改代码" [label="否"];
 }
 ```
 
-## Sub-Skills
+### 修复循环（必须严格执行）
+1. **每次修改后立即编译** - 禁止批量修改
+2. **检查 exit code** - `echo $?`（0 = 成功）
+3. **记录完整错误** - 用于分析
 
-| Skill | 用途 |
-|-------|------|
-| [workflow](subskills/workflow/SKILL.md) | 5步翻译流程 + TODO追踪 |
-| [compilation](subskills/compilation/SKILL.md) | 编译修正 + 文件级TODO |
-| [reference](subskills/reference/SKILL.md) | 文档查找和错误修正 |
-| [automation](subskills/automation/SKILL.md) | **一键自动化工作流** (推荐) |
+## Common Errors & Fixes
 
-## ⚠️ 仓颉编译器目录规则
+| 错误标记 | 原因 | 解决方案 |
+|----------|------|----------|
+| `Missing mapping for java.util.Collections` | 无直接映射 | 使用 Cangjie 对应 API |
+| `Java keyword 'synchronized' not supported` | 语法不支持 | 使用 ReentrantLock |
+| `Generic wildcard '? extends T'` | 泛型差异 | 改写为具体类型 |
 
-**重要：如果一个目录没有 `.cj` 文件，它的子目录不会被编译！**
-
+### 文档查找路径
 ```
-src/
-├── empty.cj              ← 确保 src/ 被识别
-├── mappings/
-│   ├── empty.cj          ← 确保 mappings/ 被识别
-│   ├── io/               ← 依赖父目录有 .cj 文件
-│   └── lang/
-└── utils/
+docs/
+├── extra/          # ArrayList, HashMap, Option 等
+├── libs/std/       # 标准库 API
+└── manual/         # 语法特性
 ```
 
-**解决方案**：在每个中间目录放置 `empty.cj` 文件：
-```cangjie
-// src/empty.cj
-package mypackage
+## When NOT to Use
 
-// src/mappings/empty.cj
-package mypackage.mappings
-```
+- 纯 Cangjie 开发（无 Java 源码需要翻译）
+- 代码分析（非翻译场景）
+- 非 j2cj 工具的翻译任务
 
-**注意**：j2cjlib 中的 `empty.cj` 文件不可删除，否则子目录将无法编译。
+## Common Mistakes
 
-## 🚫 j2cj输出保护规则
-
-**j2cj工具转换后生成的目录结构和配置文件禁止修改！**
-
-j2cj转换会自动生成：
-- `cjpm.toml` - 项目构建配置
-- 目录结构（包括 `empty.cj` 占位文件）
-
-**禁止操作**：
-- ❌ 修改 `cjpm.toml` 内容
-- ❌ 删除或移动 `empty.cj` 文件
-- ❌ 重命名或重组目录结构
-- ❌ 添加新的目录层级
-
-**允许操作**：
-- ✅ 修改 `.cj` 源文件内容（修复编译错误）
-- ✅ 在 `adapters/` 目录下添加外部依赖mock
-
-**原因**：j2cj生成的目录结构和配置经过验证，修改可能导致编译失败或包依赖问题。
-
-## Common Mappings
-
-| Java | Cangjie |
-|------|---------|
-| `ArrayList<E>` | `std.collection.ArrayList<E>` |
-| `HashMap<K,V>` | `std.collection.HashMap<K,V>` |
-| `Optional<T>` | `Option<T>` |
-| `null` | `None` 或可空类型 |
-| `try/catch` | `try/except` |
+1. **使用 `--mode`** → 应该用 `-mode`（单横线）
+2. **使用通配符 `*.java`** → 必须用 `@filelist` 方式
+3. **在错误目录执行 cjpm** → 必须在 `cjpm.toml` 所在目录
+4. **批量修改后编译** → 必须 修改→编译→检查 循环
 
 ## Resources
 
-- **j2cj_tool/**: j2cj.jar + 依赖库
-- **docs/**: Cangjie完整文档 (extra/, libs/std/, manual/)
-- **references/**: 文档索引 (packages_index.md, extra_index.md)
-- **templates/**: Checkpoint模板
-- **scripts/**: 工具脚本
-
-## 自动生成Stub工具
-
-**从错误标记自动生成Cangjie stub类和cjmap映射：**
-
-```bash
-# 使用一体化工作流（推荐）
-python3 scripts/j2cj_workflow.py ./java/src -o ./cangjie_output
-
-# 或仅分析已有输出
-python3 scripts/j2cj_workflow.py ./java/src -o ./cangjie_output --skip-translate
-```
-
-**生成的文件结构：**
-```
-cangjie_output/
-├── cjpm.toml                  # 主项目配置
-├── error_analysis_report.md   # 错误分析报告
-├── adapters.cjmap             # cjmap映射规则
-├── net/                       # j2cj生成的代码
-│   └── src/net/...
-└── adapters/                  # Adapter模块
-    ├── cjpm.toml
-    └── src/adapters/java/
-        ├── io/
-        │   └── OutputStream.cj
-        └── lang/
-            └── System.cj
-```
-
-**使用步骤：**
-1. 运行工作流脚本
-2. 查看错误报告了解缺失映射
-3. 将adapters模块添加为依赖
-4. 运行 `cjpm build` 验证编译
+- `j2cj_tool/j2cj.jar` - 翻译工具 (J2CJ 1.7.99)
+- `j2cj_tool/j2cj-user-guide-zh.pdf` - 用户指南
+- `docs/` - Cangjie 语言文档
+- **详细工作流**: 见 [workflow.md](./workflow.md)
