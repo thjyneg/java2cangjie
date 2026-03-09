@@ -339,104 +339,83 @@ After completing analysis:
 3. Use `java2cangjie-test` skill to compile and test
 4. Use `java2cangjie-report` skill to generate final report
 
-## TODO管理和断点续传
+## TodoWrite Task Management
 
-本skill支持TODO列表管理和断点续传功能，确保错误分析过程可以追踪和恢复。
+Use TodoWrite to track the error analysis process and enable session resumption.
 
-### 使用TODO管理器
+### Creating the TODO List
 
-```python
-from skills.java2cangjie_common import SkillTodoManager
+When starting error analysis, create a TODO list for the analysis workflow:
 
-# 初始化TODO管理器
-manager = SkillTodoManager(
-    skill_name="java2cangjie-analyze",
-    session_id="unique_session_id"
-)
-
-# 定义错误分析工作流
-analyze_workflow = [
-    {"id": "find_j2cj_markers", "content": "查找j2cj标记的错误"},
-    {"id": "categorize_errors", "content": "分类错误类型"},
-    {"id": "prioritize_errors", "content": "确定错误优先级"},
-    {"id": "lookup_documentation", "content": "查找Cangjie文档"},
-    {"id": "create_fix_plan", "content": "创建修复计划"}
-]
-
-# 尝试恢复之前的进度
-if manager.can_resume():
-    print("从上次中断点继续错误分析...")
-    manager.print_status()
-else:
-    # 创建新的TODO列表
-    manager.create_workflow_todos(analyze_workflow)
-
-# 执行分析步骤
-while True:
-    next_step = manager.get_next_pending_step()
-    if not next_step:
-        break
-
-    # 开始执行步骤
-    manager.start_step(next_step.id)
-    try:
-        # 执行步骤逻辑
-        result = execute_analyze_step(next_step.id)
-
-        # 完成步骤
-        manager.complete_step(next_step.id, result)
-    except Exception as e:
-        # 失败处理
-        manager.fail_step(next_step.id, str(e))
-        raise
-
-# 打印最终状态
-manager.print_status()
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Find all j2cj-marked issues (<-- markers)", "status": "pending", "activeForm": "Finding j2cj markers"},
+    {"content": "Categorize errors by type", "status": "pending", "activeForm": "Categorizing errors"},
+    {"content": "Prioritize errors by severity", "status": "pending", "activeForm": "Prioritizing errors"},
+    {"content": "Lookup Cangjie documentation for each error type", "status": "pending", "activeForm": "Looking up documentation"},
+    {"content": "Create detailed modification plan", "status": "pending", "activeForm": "Creating modification plan"}
+  ]
+})
 ```
 
-### 跟踪错误分析进度
+### Tracking Individual Error Categories
 
-对于大量错误，可以跟踪每个错误的分析进度：
+For large numbers of errors, track each category:
 
-```python
-# 在categorize_errors步骤中
-manager.start_step("categorize_errors")
-errors = get_all_errors()
-
-# 按类型分组
-error_types = categorize_errors_by_type(errors)
-
-for error_type, error_list in error_types.items():
-    type_id = f"analyze_{error_type}"
-    manager.manager.create_todo(
-        todo_id=type_id,
-        content=f"分析{error_type}类型错误 ({len(error_list)}个)",
-        status="pending",
-        metadata={"error_count": len(error_list)}
-    )
-
-    # 分析该类型错误
-    manager.manager.start_step(type_id)
-    try:
-        analyzed = analyze_error_type(error_type, error_list)
-        manager.manager.complete_step(type_id, f"完成 {len(analyzed)} 个错误分析")
-    except Exception as e:
-        manager.manager.fail_step(type_id, str(e))
-
-manager.complete_step("categorize_errors", f"完成 {len(error_types)} 类错误分析")
+```javascript
+// After categorizing, expand with sub-tasks
+TodoWrite({
+  "todos": [
+    {"activeForm": "Finding j2cj markers", "content": "Find all j2cj-marked issues (<-- markers)", "status": "completed"},
+    {"activeForm": "Categorizing errors", "content": "Categorize errors by type", "status": "in_progress"},
+    {"activeForm": "Analyzing type errors", "content": "Analyze 'Type not found' errors (18 errors)", "status": "pending"},
+    {"activeForm": "Analyzing method errors", "content": "Analyze 'Method not found' errors (12 errors)", "status": "pending"},
+    {"activeForm": "Analyzing nullability errors", "content": "Analyze 'Nullability' errors (8 errors)", "status": "pending"},
+    {"activeForm": "Looking up documentation", "content": "Lookup Cangjie documentation for each error type", "status": "pending"},
+    {"activeForm": "Creating modification plan", "content": "Create detailed modification plan", "status": "pending"}
+  ]
+})
 ```
 
-### TODO状态跟踪
+### Updating Status
 
-错误分析过程中的关键检查点：
+Mark each analysis step as `in_progress` when starting, `completed` when done. Only ONE task should be `in_progress` at any time.
 
-1. **find_j2cj_markers** - 查找所有j2cj标记的错误
-2. **categorize_errors** - 按类型分类错误
-3. **prioritize_errors** - 确定错误优先级
-4. **lookup_documentation** - 查找Cangjie文档和API
-5. **create_fix_plan** - 创建详细的修复计划
+```javascript
+// When starting documentation lookup
+TodoWrite({
+  "todos": [
+    {"activeForm": "Finding j2cj markers", "content": "Find all j2cj-marked issues (<-- markers)", "status": "completed"},
+    {"activeForm": "Categorizing errors", "content": "Categorize errors by type", "status": "completed"},
+    {"activeForm": "Prioritizing errors", "content": "Prioritize errors by severity", "status": "completed"},
+    {"activeForm": "Looking up documentation", "content": "Lookup Cangjie documentation for each error type", "status": "in_progress"},
+    {"activeForm": "Creating modification plan", "content": "Create detailed modification plan", "status": "pending"}
+  ]
+})
+```
 
-每个步骤完成后会自动保存状态，支持断点续传。
+### Session Resumption
+
+To resume an interrupted analysis:
+
+1. Check `<output_dir>/.java2cangjie_checkpoint.md` for saved progress
+2. Read the checkpoint to determine which errors have been analyzed
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue from the first non-completed step
+
+```javascript
+// Example: Resuming mid-analysis
+TodoWrite({
+  "todos": [
+    {"activeForm": "Finding j2cj markers", "content": "Find all j2cj-marked issues (<-- markers)", "status": "completed"},
+    {"activeForm": "Categorizing errors", "content": "Categorize errors by type", "status": "completed"},
+    {"activeForm": "Prioritizing errors", "content": "Prioritize errors by severity", "status": "in_progress"},
+    {"activeForm": "Looking up documentation", "content": "Lookup Cangjie documentation for each error type", "status": "pending"},
+    {"activeForm": "Creating modification plan", "content": "Create detailed modification plan", "status": "pending"}
+  ]
+})
+```
 
 ## Related Skills
 

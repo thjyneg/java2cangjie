@@ -340,155 +340,112 @@ After completing translation:
 4. Use `java2cangjie-test` skill to compile and test
 5. Use `java2cangjie-report` skill to generate final report
 
-## TODO管理和断点续传
+## TodoWrite Task Management
 
-本skill支持TODO列表管理和断点续传功能，确保翻译过程可以追踪和恢复。
+Use TodoWrite to track translation progress and enable session resumption.
 
-### 使用TODO管理器
+### Creating the TODO List
 
-```python
-from skills.java2cangjie_common import SkillTodoManager
+When starting translation, create a TODO list based on the translation mode:
 
-# 初始化TODO管理器
-manager = SkillTodoManager(
-    skill_name="java2cangjie-translate",
-    session_id="unique_session_id"
-)
-
-# 定义翻译工作流（根据模式动态生成）
-if translation_mode == "module":
-    translate_workflow = [
-        {"id": "prepare_module", "content": "准备模块翻译"},
-        {"id": "generate_classpath", "content": "生成classpath"},
-        {"id": "execute_translation", "content": "执行j2cj翻译"},
-        {"id": "verify_output", "content": "验证翻译输出"}
-    ]
-elif translation_mode == "project":
-    translate_workflow = [
-        {"id": "parse_pom", "content": "解析pom.xml"},
-        {"id": "prepare_modules", "content": "准备模块列表"},
-        {"id": "translate_modules", "content": "翻译所有模块"},
-        {"id": "verify_results", "content": "验证翻译结果"}
-    ]
-else:  # domain mode
-    translate_workflow = [
-        {"id": "scan_domain", "content": "扫描域目录"},
-        {"id": "prepare_projects", "content": "准备项目列表"},
-        {"id": "translate_projects", "content": "翻译所有项目"},
-        {"id": "generate_summary", "content": "生成翻译摘要"}
-    ]
-
-# 尝试恢复之前的进度
-if manager.can_resume():
-    print("从上次中断点继续翻译...")
-    manager.print_status()
-else:
-    # 创建新的TODO列表
-    manager.create_workflow_todos(translate_workflow)
-
-# 执行翻译步骤
-while True:
-    next_step = manager.get_next_pending_step()
-    if not next_step:
-        break
-
-    # 开始执行步骤
-    manager.start_step(next_step.id)
-    try:
-        # 执行步骤逻辑
-        result = execute_translate_step(next_step.id, translation_mode)
-
-        # 完成步骤
-        manager.complete_step(next_step.id, result)
-    except Exception as e:
-        # 失败处理
-        manager.fail_step(next_step.id, str(e))
-        raise
-
-# 打印最终状态
-manager.print_status()
+**Module Mode:**
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Prepare module translation environment", "status": "pending", "activeForm": "Preparing module environment"},
+    {"content": "Generate classpath from project dependencies", "status": "pending", "activeForm": "Generating classpath"},
+    {"content": "Execute j2cj translation command", "status": "pending", "activeForm": "Executing j2cj translation"},
+    {"content": "Verify generated Cangjie files", "status": "pending", "activeForm": "Verifying output files"}
+  ]
+})
 ```
 
-### 断点续传示例
-
-翻译大型项目时可能需要很长时间，支持断点续传非常重要：
-
-```python
-def main():
-    manager = SkillTodoManager("java2cangjie-translate", "session_123")
-
-    # 检查是否有未完成的翻译
-    if manager.can_resume():
-        print("检测到未完成的翻译任务")
-        manager.print_status()
-        print("从上次中断点继续...")
-
-        # 恢复执行
-        resume_translation(manager)
-    else:
-        # 全新翻译
-        start_new_translation(manager)
-
-    # 完成后清理状态
-    manager.clear_state()
+**Project Mode:**
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Parse pom.xml for module list", "status": "pending", "activeForm": "Parsing pom.xml"},
+    {"content": "Prepare all modules for translation", "status": "pending", "activeForm": "Preparing modules"},
+    {"content": "Translate modules sequentially", "status": "pending", "activeForm": "Translating modules"},
+    {"content": "Verify all translation results", "status": "pending", "activeForm": "Verifying results"}
+  ]
+})
 ```
 
-### 跟踪模块翻译进度
-
-对于项目模式和域模式，可以跟踪每个模块的翻译进度：
-
-```python
-# 在translate_modules步骤中
-manager.start_step("translate_modules")
-modules = get_module_list()
-
-for i, module in enumerate(modules):
-    module_id = f"module_{i}"
-    manager.manager.create_todo(
-        todo_id=module_id,
-        content=f"翻译模块: {module['name']}",
-        status="pending",
-        metadata={"module_path": module["path"]}
-    )
-
-    # 翻译模块
-    manager.manager.start_step(module_id)
-    try:
-        result = translate_single_module(module)
-        manager.manager.complete_step(module_id, f"成功翻译 {result['file_count']} 个文件")
-    except Exception as e:
-        manager.manager.fail_step(module_id, str(e))
-
-    # 显示进度
-    if (i + 1) % 10 == 0:
-        manager.print_status()
-
-manager.complete_step("translate_modules", f"完成 {len(modules)} 个模块翻译")
+**Domain Mode:**
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Scan domain directory for projects", "status": "pending", "activeForm": "Scanning domain directory"},
+    {"content": "Prepare all projects for translation", "status": "pending", "activeForm": "Preparing projects"},
+    {"content": "Translate all projects", "status": "pending", "activeForm": "Translating projects"},
+    {"content": "Generate translation summary", "status": "pending", "activeForm": "Generating summary"}
+  ]
+})
 ```
 
-### TODO状态跟踪
+### Updating Status During Execution
 
-翻译过程中的关键检查点：
+Update the TODO status as each step progresses. Only ONE task should be `in_progress` at any time.
 
-**模块模式:**
-1. **prepare_module** - 准备模块翻译环境
-2. **generate_classpath** - 生成项目依赖classpath
-3. **execute_translation** - 执行j2cj翻译命令
-4. **verify_output** - 验证生成的Cangjie文件
+```javascript
+// Mark step as in_progress before executing
+TodoWrite({
+  "todos": [
+    {"activeForm": "Preparing module environment", "content": "Prepare module translation environment", "status": "in_progress"},
+    {"activeForm": "Generating classpath", "content": "Generate classpath from project dependencies", "status": "pending"},
+    // ...
+  ]
+})
 
-**项目模式:**
-1. **parse_pom** - 解析Maven pom.xml文件
-2. **prepare_modules** - 准备所有待翻译模块
-3. **translate_modules** - 逐个翻译模块
-4. **verify_results** - 验证所有翻译结果
+// After successful completion, mark as completed
+TodoWrite({
+  "todos": [
+    {"activeForm": "Preparing module environment", "content": "Prepare module translation environment", "status": "completed"},
+    {"activeForm": "Generating classpath", "content": "Generate classpath from project dependencies", "status": "in_progress"},
+    // ...
+  ]
+})
+```
 
-**域模式:**
-1. **scan_domain** - 扫描域目录中的项目
-2. **prepare_projects** - 准备所有待翻译项目
-3. **translate_projects** - 逐个翻译项目
-4. **generate_summary** - 生成翻译摘要报告
+### Tracking Module Progress (Project/Domain Mode)
 
-每个步骤完成后会自动保存状态，支持断点续传。
+For multiple modules, expand the TODO list with sub-tasks:
+
+```javascript
+// After identifying modules
+TodoWrite({
+  "todos": [
+    {"activeForm": "Parsing pom.xml", "content": "Parse pom.xml for module list", "status": "completed"},
+    {"activeForm": "Preparing modules", "content": "Prepare all modules for translation", "status": "completed"},
+    {"activeForm": "Translating common module", "content": "Translate module: common", "status": "in_progress"},
+    {"activeForm": "Translating service module", "content": "Translate module: service", "status": "pending"},
+    {"activeForm": "Translating web module", "content": "Translate module: web", "status": "pending"},
+    {"activeForm": "Verifying results", "content": "Verify all translation results", "status": "pending"}
+  ]
+})
+```
+
+### Session Resumption
+
+To resume an interrupted translation:
+
+1. Check `<output_dir>/.java2cangjie_checkpoint.md` for saved progress
+2. Read the checkpoint file to determine which steps are completed
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue from the first non-completed step
+
+```javascript
+// Example: Resuming mid-translation
+TodoWrite({
+  "todos": [
+    {"activeForm": "Preparing module environment", "content": "Prepare module translation environment", "status": "completed"},
+    {"activeForm": "Generating classpath", "content": "Generate classpath from project dependencies", "status": "completed"},
+    {"activeForm": "Executing j2cj translation", "content": "Execute j2cj translation command", "status": "in_progress"},
+    {"activeForm": "Verifying output files", "content": "Verify generated Cangjie files", "status": "pending"}
+  ]
+})
+```
 
 ## Related Skills
 

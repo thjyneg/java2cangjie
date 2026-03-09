@@ -123,3 +123,53 @@
 
    请选择: _
    ```
+
+## TodoWrite 状态同步
+
+恢复会话时，使用 TodoWrite 工具重建任务状态：
+
+### 主流程 TODO 状态
+
+根据检查点文件创建 TodoWrite：
+
+```javascript
+// 读取检查点后创建
+TodoWrite({
+  "todos": [
+    {"content": "Setup environment", "status": "completed", "activeForm": "Setting up environment"},
+    {"content": "Execute j2cj translation", "status": "completed", "activeForm": "Executing j2cj translation"},
+    {"content": "Analyze translation errors", "status": "completed", "activeForm": "Analyzing translation errors"},
+    {"content": "Confirm modification plan with user", "status": "completed", "activeForm": "Confirming modification plan"},
+    {"content": "Fix translation errors iteratively", "status": "in_progress", "activeForm": "Fixing translation errors"},
+    {"content": "Compile and test Cangjie code", "status": "pending", "activeForm": "Compiling and testing code"},
+    {"content": "Generate translation report", "status": "pending", "activeForm": "Generating translation report"}
+  ]
+})
+```
+
+### 文件修复 TODO 状态
+
+根据文件修复状态表创建详细 TODO：
+
+```javascript
+// 基于文件修复状态表
+TodoWrite({
+  "todos": [
+    {"activeForm": "Fixing Constants.cj", "content": "Fix common/Constants.cj", "status": "completed"},
+    {"activeForm": "Fixing Helper.cj", "content": "Fix common/utils/Helper.cj", "status": "completed"},
+    {"activeForm": "Fixing BaseService.cj", "content": "Fix service/BaseService.cj", "status": "completed"},
+    {"activeForm": "Fixing UserService.cj", "content": "Fix service/UserService.cj", "status": "in_progress"},
+    {"activeForm": "Fixing DataService.cj", "content": "Fix service/DataService.cj", "status": "pending"},
+    {"activeForm": "Fixing Main.cj", "content": "Fix main/Main.cj", "status": "pending"}
+  ]
+})
+```
+
+### 恢复指令
+
+恢复时按以下步骤操作：
+
+1. 读取检查点文件
+2. 解析进度表中的状态
+3. 创建与状态对应的 TodoWrite
+4. 从第一个 `in_progress` 或 `pending` 任务继续

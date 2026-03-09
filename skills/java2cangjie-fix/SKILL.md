@@ -436,246 +436,42 @@ After fixing all errors:
 1. Use `java2cangjie-test` skill to compile and test
 2. Use `java2cangjie-report` skill to generate final report
 
-## TODO管理和断点续传
+## Session Resumption
 
-本skill支持TODO列表管理和断点续传功能，确保错误修复过程可以追踪和恢复。本skill同时使用TodoWrite工具（用于实时跟踪）和SkillTodoManager（用于持久化）。
+To resume an interrupted fix process:
 
-### 双重TODO管理
+1. Check checkpoint file at `<output_dir>/.java2cangjie_checkpoint.md`
+2. Read the file repair status table to determine which files are completed
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue fixing from the first non-completed file
 
-本skill采用双重TODO管理策略：
-
-1. **TodoWrite工具** - 实时跟踪当前修复进度
-2. **SkillTodoManager** - 持久化保存状态，支持断点续传
-
-### 使用TODO管理器
-
-```python
-from skills.java2cangjie_common import SkillTodoManager
-
-# 初始化TODO管理器
-manager = SkillTodoManager(
-    skill_name="java2cangjie-fix",
-    session_id="unique_session_id"
-)
-
-# 定义错误修复工作流
-fix_workflow = [
-    {"id": "analyze_dependencies", "content": "分析文件依赖关系"},
-    {"id": "create_fix_list", "content": "创建修复列表"},
-    {"id": "execute_fixes", "content": "执行修复（修改-编译循环）"},
-    {"id": "verify_compilation", "content": "验证编译结果"},
-    {"id": "handle_remaining_errors", "content": "处理剩余错误"}
-]
-
-# 尝试恢复之前的进度
-if manager.can_resume():
-    print("从上次中断点继续错误修复...")
-    manager.print_status()
-    # 恢复到执行修复阶段
-    manager.start_step("execute_fixes")
-else:
-    # 创建新的TODO列表
-    manager.create_workflow_todos(fix_workflow)
-
-# 执行修复步骤
-while True:
-    next_step = manager.get_next_pending_step()
-    if not next_step:
-        break
-
-    # 开始执行步骤
-    manager.start_step(next_step.id)
-    try:
-        # 执行步骤逻辑
-        result = execute_fix_step(next_step.id)
-
-        # 完成步骤
-        manager.complete_step(next_step.id, result)
-    except Exception as e:
-        # 失败处理
-        manager.fail_step(next_step.id, str(e))
-        raise
-
-# 打印最终状态
-manager.print_status()
+```javascript
+// Example: Resuming mid-fix
+TodoWrite({
+  "todos": [
+    {"activeForm": "Fixing Model.cj", "content": "Fix Model.cj: Add ArrayList import", "status": "completed"},
+    {"activeForm": "Fixing Service.cj", "content": "Fix Service.cj: Replace currentTimeMillis", "status": "completed"},
+    {"activeForm": "Fixing UserService.cj", "content": "Fix UserService.cj: Handle nullable value", "status": "in_progress"},
+    {"activeForm": "Fixing DataService.cj", "content": "Fix DataService.cj: Add missing imports", "status": "pending"},
+    {"activeForm": "Fixing Controller.cj", "content": "Fix Controller.cj: Update method signatures", "status": "pending"}
+  ]
+})
 ```
 
-### 结合TodoWrite工具
+### Checkpoint Integration
 
-在执行修复循环时，同时使用TodoWrite工具和SkillTodoManager：
+Update the checkpoint file after each successful fix:
 
-```python
-from skills.java2cangjie_common import SkillTodoManager
+```markdown
+# In .java2cangjie_checkpoint.md
 
-# 初始化持久化管理器
-manager = SkillTodoManager("java2cangjie-fix", "session_123")
-
-# 开始执行修复步骤
-manager.start_step("execute_fixes")
-
-# 获取修复列表（从分析阶段获取）
-fixes = get_fix_list()
-
-# 使用TodoWrite工具创建实时TODO列表
-todo_list = []
-for i, fix in enumerate(fixes):
-    todo_list.append({
-        "id": f"fix_{i}",
-        "content": f"Fix {fix['file']}:{fix['line']} - {fix['description']}",
-        "status": "pending"
-    })
-
-TodoWrite({"todos": todo_list})
-
-# 执行修改-编译循环
-for i, fix in enumerate(fixes):
-    todo_id = f"fix_{i}"
-
-    # 更新TodoWrite状态
-    todo_list[i]["status"] = "in_progress"
-    TodoWrite({"todos": todo_list})
-
-    # 也更新持久化管理器
-    manager.manager.create_todo(
-        todo_id=todo_id,
-        content=f"修复 {fix['file']}:{fix['line']}",
-        status="in_progress",
-        metadata={
-            "file": fix["file"],
-            "line": fix["line"],
-            "error_type": fix["error_type"]
-        }
-    )
-
-    # 执行修复
-    try:
-        apply_fix(fix)
-
-        # 编译验证
-        compile_result = compile_code()
-
-        if compile_result.success:
-            # 修复成功
-            todo_list[i]["status"] = "completed"
-            TodoWrite({"todos": todo_list})
-            manager.manager.complete_step(todo_id, "修复成功")
-        else:
-            # 修复失败，记录错误
-            todo_list[i]["status"] = "failed"
-            TodoWrite({"todos": todo_list})
-            manager.manager.fail_step(todo_id, compile_result.error)
-
-    except Exception as e:
-        # 修复异常
-        todo_list[i]["status"] = "failed"
-        TodoWrite({"todos": todo_list})
-        manager.manager.fail_step(todo_id, str(e))
-
-# 完成修复步骤
-manager.complete_step("execute_fixes", f"完成 {len(fixes)} 个修复项")
+#### File Repair Status
+| File | Level | Status | Fix Round | Last Error |
+|------|-------|--------|-----------|------------|
+| common/Model.cj | 1 | completed | 1 | - |
+| service/Service.cj | 2 | completed | 1 | - |
+| service/UserService.cj | 3 | in_progress | 2 | Type 'ArrayList' not found:15 |
 ```
-
-### 断点续传示例
-
-如果修复过程中断（如系统崩溃、网络问题等），下次启动时自动恢复：
-
-```python
-def main():
-    manager = SkillTodoManager("java2cangjie-fix", "session_123")
-
-    # 检查是否有未完成的修复
-    if manager.can_resume():
-        print("检测到未完成的错误修复")
-        manager.print_status()
-
-        # 获取已完成和待处理的修复
-        completed = manager.manager.get_completed_todos()
-        pending = manager.manager.get_pending_todos()
-        failed = manager.manager.get_failed_todos()
-
-        print(f"已完成: {len(completed)} 个修复")
-        print(f"待处理: {len(pending)} 个修复")
-        print(f"失败: {len(failed)} 个修复")
-
-        # 从上次中断点继续
-        resume_fixes(manager)
-    else:
-        # 全新开始
-        start_new_fixes(manager)
-
-    # 完成后清理状态
-    manager.clear_state()
-```
-
-### TODO状态跟踪
-
-错误修复过程中的关键检查点：
-
-1. **analyze_dependencies** - 分析文件间的依赖关系
-2. **create_fix_list** - 根据依赖顺序创建修复列表
-3. **execute_fixes** - 执行修改-编译循环（最多20次迭代）
-4. **verify_compilation** - 验证最终编译结果
-5. **handle_remaining_errors** - 处理剩余的错误（如有）
-
-每个修复项也会被单独跟踪：
-
-- **fix_N** - 修复第N个错误
-  - 状态：pending → in_progress → completed/failed
-  - 元数据：文件路径、行号、错误类型、修复描述
-
-### 迭代跟踪
-
-记录每次修改-编译循环的迭代：
-
-```python
-# 在execute_fixes步骤中
-manager.start_step("execute_fixes")
-iteration = 0
-max_iterations = 20
-
-while iteration < max_iterations:
-    iteration += 1
-
-    # 记录迭代
-    iteration_id = f"iteration_{iteration}"
-    manager.manager.create_todo(
-        todo_id=iteration_id,
-        content=f"第 {iteration} 次迭代",
-        status="in_progress",
-        metadata={"iteration": iteration}
-    )
-
-    # 执行修复和编译
-    errors = compile_and_fix()
-
-    if not errors:
-        # 所有错误已修复
-        manager.manager.complete_step(iteration_id, "编译成功，无错误")
-        break
-    else:
-        # 还有错误，继续迭代
-        manager.manager.complete_step(iteration_id, f"剩余 {len(errors)} 个错误")
-
-if iteration >= max_iterations:
-    manager.manager.fail_step("execute_fixes", "达到最大迭代次数")
-
-manager.complete_step("execute_fixes", f"完成 {iteration} 次迭代")
-```
-
-### 与TodoWrite工具的配合
-
-| 功能 | TodoWrite工具 | SkillTodoManager |
-|------|---------------|------------------|
-| 实时显示 | ✅ 立即可见 | ⚠️ 需要查询 |
-| 持久化 | ❌ 会话结束后丢失 | ✅ 永久保存 |
-| 断点续传 | ❌ 不支持 | ✅ 支持 |
-| 会话内跟踪 | ✅ 推荐 | ✅ 可选 |
-| 跨会话恢复 | ❌ 不支持 | ✅ 支持 |
-
-**最佳实践：**
-- 在会话内使用TodoWrite工具实时显示进度
-- 同时使用SkillTodoManager保存状态，支持断点续传
-- 每次修复完成后更新两个系统
 
 ## Related Skills
 

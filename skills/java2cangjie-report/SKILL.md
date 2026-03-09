@@ -416,235 +416,75 @@ After generating the report:
 
 Congratulations! The Java to Cangjie translation is complete. The translated code is ready for integration and production use.
 
-## TODO管理和断点续传
+## TodoWrite Task Management
 
-本skill支持TODO列表管理和断点续传功能，确保报告生成过程可以追踪和恢复。
+Use TodoWrite to track the report generation process.
 
-### 使用TODO管理器
+### Creating the TODO List
 
-```python
-from skills.java2cangjie_common import SkillTodoManager
+When starting report generation, create a TODO list:
 
-# 初始化TODO管理器
-manager = SkillTodoManager(
-    skill_name="java2cangjie-report",
-    session_id="unique_session_id"
-)
-
-# 定义报告生成工作流
-report_workflow = [
-    {"id": "collect_statistics", "content": "收集翻译统计信息"},
-    {"id": "analyze_errors", "content": "分析错误和修复"},
-    {"id": "compile_results", "content": "整理编译结果"},
-    {"id": "test_results", "content": "整理测试结果"},
-    {"id": "quality_assessment", "content": "评估代码质量"},
-    {"id": "generate_report", "content": "生成最终报告"},
-    {"id": "save_report", "content": "保存报告文件"}
-]
-
-# 尝试恢复之前的进度
-if manager.can_resume():
-    print("从上次中断点继续报告生成...")
-    manager.print_status()
-else:
-    # 创建新的TODO列表
-    manager.create_workflow_todos(report_workflow)
-
-# 执行报告生成步骤
-while True:
-    next_step = manager.get_next_pending_step()
-    if not next_step:
-        break
-
-    # 开始执行步骤
-    manager.start_step(next_step.id)
-    try:
-        # 执行步骤逻辑
-        result = execute_report_step(next_step.id)
-
-        # 完成步骤
-        manager.complete_step(next_step.id, result)
-    except Exception as e:
-        # 失败处理
-        manager.fail_step(next_step.id, str(e))
-        raise
-
-# 打印最终状态
-manager.print_status()
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Collect translation statistics", "status": "pending", "activeForm": "Collecting translation statistics"},
+    {"content": "Analyze errors and fixes", "status": "pending", "activeForm": "Analyzing errors and fixes"},
+    {"content": "Compile compilation results history", "status": "pending", "activeForm": "Compiling compilation results"},
+    {"content": "Summarize test results", "status": "pending", "activeForm": "Summarizing test results"},
+    {"content": "Assess code quality", "status": "pending", "activeForm": "Assessing code quality"},
+    {"content": "Generate report sections", "status": "pending", "activeForm": "Generating report sections"},
+    {"content": "Save report to file", "status": "pending", "activeForm": "Saving report to file"}
+  ]
+})
 ```
 
-### 跟踪报告章节生成
+### Tracking Report Sections
 
-记录每个报告章节的生成状态：
+For detailed tracking, create sub-tasks for each report section:
 
-```python
-# 在generate_report步骤中
-manager.start_step("generate_report")
-
-# 定义报告章节
-report_sections = [
-    {"id": "executive_summary", "title": "执行摘要"},
-    {"id": "translation_stats", "title": "翻译统计"},
-    {"id": "error_analysis", "title": "错误分析"},
-    {"id": "fix_summary", "title": "修复摘要"},
-    {"id": "compilation_results", "title": "编译结果"},
-    {"id": "test_results", "title": "测试结果"},
-    {"id": "quality_assessment", "title": "质量评估"},
-    {"id": "issues_limitations", "title": "问题和限制"},
-    {"id": "recommendations", "title": "建议"},
-    {"id": "appendix", "title": "附录"}
-]
-
-# 为每个章节创建TODO
-for section in report_sections:
-    manager.manager.create_todo(
-        todo_id=section["id"],
-        content=f"生成章节: {section['title']}",
-        status="pending"
-    )
-
-# 逐个生成章节
-for section in report_sections:
-    section_id = section["id"]
-    manager.manager.start_step(section_id)
-
-    try:
-        content = generate_section_content(section_id)
-        manager.manager.complete_step(section_id, f"完成 {section['title']}")
-    except Exception as e:
-        manager.manager.fail_step(section_id, str(e))
-
-manager.complete_step("generate_report", "完成所有章节生成")
+```javascript
+// After starting section generation
+TodoWrite({
+  "todos": [
+    {"activeForm": "Collecting translation statistics", "content": "Collect translation statistics", "status": "completed"},
+    {"activeForm": "Generating Executive Summary", "content": "Generate section: Executive Summary", "status": "completed"},
+    {"activeForm": "Generating Translation Statistics", "content": "Generate section: Translation Statistics", "status": "completed"},
+    {"activeForm": "Generating Error Analysis", "content": "Generate section: Error Analysis", "status": "in_progress"},
+    {"activeForm": "Generating Fix Summary", "content": "Generate section: Fix Summary", "status": "pending"},
+    {"activeForm": "Generating Compilation Results", "content": "Generate section: Compilation Results", "status": "pending"},
+    {"activeForm": "Generating Test Results", "content": "Generate section: Test Results", "status": "pending"},
+    {"activeForm": "Generating Quality Assessment", "content": "Generate section: Quality Assessment", "status": "pending"},
+    {"activeForm": "Generating Issues and Limitations", "content": "Generate section: Issues and Limitations", "status": "pending"},
+    {"activeForm": "Generating Recommendations", "content": "Generate section: Recommendations", "status": "pending"},
+    {"activeForm": "Generating Appendix", "content": "Generate section: Appendix", "status": "pending"},
+    {"activeForm": "Saving report to file", "content": "Save report to file", "status": "pending"}
+  ]
+})
 ```
 
-### 收集各个skill的进度
+### Session Resumption
 
-从其他skill的TODO管理器中收集进度信息：
+To resume an interrupted report generation:
 
-```python
-# 在collect_statistics步骤中
-manager.start_step("collect_statistics")
+1. Check `<output_dir>/.java2cangjie_checkpoint.md` for saved progress
+2. Read the checkpoint to determine which sections have been generated
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue from the first non-completed section
 
-# 收集各个skill的进度信息
-skills = [
-    "java2cangjie-setup",
-    "java2cangjie-translate",
-    "java2cangjie-analyze",
-    "java2cangjie-confirm",
-    "java2cangjie-fix",
-    "java2cangjie-test"
-]
-
-for skill_name in skills:
-    skill_manager = SkillTodoManager(skill_name, "session_123")
-    if skill_manager.can_resume():
-        summary = skill_manager.manager.get_progress_summary()
-
-        manager.manager.create_todo(
-            todo_id=f"stats_{skill_name}",
-            content=f"{skill_name} 统计",
-            status="completed",
-            metadata=summary
-        )
-
-manager.complete_step("collect_statistics", f"收集 {len(skills)} 个skill的统计信息")
+```javascript
+// Example: Resuming mid-report
+TodoWrite({
+  "todos": [
+    {"activeForm": "Collecting translation statistics", "content": "Collect translation statistics", "status": "completed"},
+    {"activeForm": "Analyzing errors and fixes", "content": "Analyze errors and fixes", "status": "completed"},
+    {"activeForm": "Compiling compilation results", "content": "Compile compilation results history", "status": "completed"},
+    {"activeForm": "Summarizing test results", "content": "Summarize test results", "status": "in_progress"},
+    {"activeForm": "Assessing code quality", "content": "Assess code quality", "status": "pending"},
+    {"activeForm": "Generating report sections", "content": "Generate report sections", "status": "pending"},
+    {"activeForm": "Saving report to file", "content": "Save report to file", "status": "pending"}
+  ]
+})
 ```
-
-### TODO状态跟踪
-
-报告生成过程中的关键检查点：
-
-1. **collect_statistics** - 收集所有翻译统计信息
-2. **analyze_errors** - 分析错误和修复情况
-3. **compile_results** - 整理编译历史和结果
-4. **test_results** - 整理测试结果和覆盖率
-5. **quality_assessment** - 评估代码质量
-6. **generate_report** - 生成报告各个章节
-7. **save_report** - 保存报告文件
-
-每个步骤完成后会自动保存状态，支持断点续传。
-
-### 导出完整报告
-
-使用SkillTodoManager的导出功能：
-
-```python
-# 在save_report步骤中
-manager.start_step("save_report")
-
-# 生成完整报告
-report_content = "# Java to Cangjie 翻译报告\n\n"
-
-# 添加执行摘要
-report_content += generate_executive_summary()
-
-# 添加进度摘要
-report_content += "\n## 执行进度\n\n"
-report_content += manager.manager.export_to_text()
-
-# 添加各个章节
-for section in report_sections:
-    section_todo = manager.manager.get_todo(section["id"])
-    if section_todo and section_todo.status == "completed":
-        report_content += f"\n## {section['title']}\n\n"
-        report_content += get_section_content(section["id"])
-
-# 保存报告
-report_path = f"{output_dir}/TRANSLATION_REPORT.md"
-with open(report_path, 'w', encoding='utf-8') as f:
-    f.write(report_content)
-
-manager.manager.complete_step("save_report", f"报告已保存到 {report_path}")
-manager.complete_step("save_report", "报告生成完成")
-```
-
-### 断点续传示例
-
-如果报告生成过程中断（如数据收集失败、文件写入错误等），下次启动时自动恢复：
-
-```python
-def main():
-    manager = SkillTodoManager("java2cangjie-report", "session_123")
-
-    # 检查是否有未完成的报告
-    if manager.can_resume():
-        print("检测到未完成的报告生成")
-        manager.print_status()
-
-        # 检查已完成的部分
-        completed = manager.manager.get_completed_todos()
-        print(f"已完成 {len(completed)} 个章节")
-
-        # 检查失败的部分
-        failed = manager.manager.get_failed_todos()
-        if failed:
-            print(f"发现 {len(failed)} 个失败的章节")
-            # 重新生成失败的章节
-            retry_failed_sections(manager)
-
-        # 恢复执行
-        resume_report_generation(manager)
-    else:
-        # 全新开始
-        start_new_report(manager)
-
-    # 完成后清理状态
-    manager.clear_state()
-```
-
-### TODO状态跟踪
-
-报告生成过程中的关键检查点：
-
-1. **collect_statistics** - 收集翻译、错误、修复的统计信息
-2. **analyze_errors** - 分析错误类型和修复情况
-3. **compile_results** - 整理编译历史和最终结果
-4. **test_results** - 整理测试结果和覆盖率数据
-5. **quality_assessment** - 评估代码质量和各项指标
-6. **generate_report** - 生成报告的各个章节
-7. **save_report** - 保存报告文件到指定位置
-
-每个步骤完成后会自动保存状态，支持断点续传。
 
 ## Related Skills
 

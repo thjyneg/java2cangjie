@@ -137,6 +137,76 @@ java2cangjie-test
 java2cangjie-report
 ```
 
+## TodoWrite Task Management
+
+Use TodoWrite to track the overall translation workflow progress and enable session resumption.
+
+### Creating Workflow TODO List
+
+When starting a new translation, create a high-level TODO list for all 7 steps:
+
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Setup environment", "status": "pending", "activeForm": "Setting up environment"},
+    {"content": "Execute j2cj translation", "status": "pending", "activeForm": "Executing j2cj translation"},
+    {"content": "Analyze translation errors", "status": "pending", "activeForm": "Analyzing translation errors"},
+    {"content": "Confirm modification plan with user", "status": "pending", "activeForm": "Confirming modification plan"},
+    {"content": "Fix translation errors iteratively", "status": "pending", "activeForm": "Fixing translation errors"},
+    {"content": "Compile and test Cangjie code", "status": "pending", "activeForm": "Compiling and testing code"},
+    {"content": "Generate translation report", "status": "pending", "activeForm": "Generating translation report"}
+  ]
+})
+```
+
+### Updating Progress
+
+Mark each step as `in_progress` when starting, and `completed` when done. Only ONE task should be `in_progress` at any time.
+
+```javascript
+// When starting a step
+TodoWrite({
+  "todos": [
+    {"activeForm": "Setting up environment", "content": "Setup environment", "status": "in_progress"},
+    {"activeForm": "Executing j2cj translation", "content": "Execute j2cj translation", "status": "pending"},
+    // ... other steps remain pending
+  ]
+})
+
+// When completing a step
+TodoWrite({
+  "todos": [
+    {"activeForm": "Setting up environment", "content": "Setup environment", "status": "completed"},
+    {"activeForm": "Executing j2cj translation", "content": "Execute j2cj translation", "status": "pending"},
+    // ... remaining steps
+  ]
+})
+```
+
+### Session Resumption
+
+When resuming from a previous session:
+
+1. Check for checkpoint file at `<output_dir>/.java2cangjie_checkpoint.md`
+2. Read the checkpoint to determine current progress
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue from the first non-completed step
+
+```javascript
+// Example: Resuming mid-workflow
+TodoWrite({
+  "todos": [
+    {"activeForm": "Setting up environment", "content": "Setup environment", "status": "completed"},
+    {"activeForm": "Executing j2cj translation", "content": "Execute j2cj translation", "status": "completed"},
+    {"activeForm": "Analyzing translation errors", "content": "Analyze translation errors", "status": "completed"},
+    {"activeForm": "Confirming modification plan", "content": "Confirm modification plan with user", "status": "completed"},
+    {"activeForm": "Fixing translation errors", "content": "Fix translation errors iteratively", "status": "in_progress"},
+    {"activeForm": "Compiling and testing code", "content": "Compile and test Cangjie code", "status": "pending"},
+    {"activeForm": "Generating translation report", "content": "Generate translation report", "status": "pending"}
+  ]
+})
+```
+
 ## Key Features
 
 ### 1. Dependency-Aware Fixing

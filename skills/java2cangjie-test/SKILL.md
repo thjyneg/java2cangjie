@@ -314,218 +314,83 @@ After failed testing:
 2. Re-run testing after fixes
 3. Escalate if issues cannot be resolved
 
-## TODO管理和断点续传
+## TodoWrite Task Management
 
-本skill支持TODO列表管理和断点续传功能，确保测试过程可以追踪和恢复。
+Use TodoWrite to track the testing and verification process.
 
-### 使用TODO管理器
+### Creating the TODO List
 
-```python
-from skills.java2cangjie_common import SkillTodoManager
+When starting testing, create a TODO list for the testing workflow:
 
-# 初始化TODO管理器
-manager = SkillTodoManager(
-    skill_name="java2cangjie-test",
-    session_id="unique_session_id"
-)
-
-# 定义测试工作流
-test_workflow = [
-    {"id": "compile_check", "content": "编译检查"},
-    {"id": "run_tests", "content": "运行测试"},
-    {"id": "code_review", "content": "代码审查"},
-    {"id": "quality_assessment", "content": "质量评估"},
-    {"id": "generate_report", "content": "生成测试报告"}
-]
-
-# 尝试恢复之前的进度
-if manager.can_resume():
-    print("从上次中断点继续测试...")
-    manager.print_status()
-else:
-    # 创建新的TODO列表
-    manager.create_workflow_todos(test_workflow)
-
-# 执行测试步骤
-while True:
-    next_step = manager.get_next_pending_step()
-    if not next_step:
-        break
-
-    # 开始执行步骤
-    manager.start_step(next_step.id)
-    try:
-        # 执行步骤逻辑
-        result = execute_test_step(next_step.id)
-
-        # 完成步骤
-        manager.complete_step(next_step.id, result)
-    except Exception as e:
-        # 失败处理
-        manager.fail_step(next_step.id, str(e))
-        raise
-
-# 打印最终状态
-manager.print_status()
+```javascript
+TodoWrite({
+  "todos": [
+    {"content": "Compile Cangjie code with cjpm build", "status": "pending", "activeForm": "Compiling Cangjie code"},
+    {"content": "Run tests with cjpm test", "status": "pending", "activeForm": "Running tests"},
+    {"content": "Review code and compare with Java original", "status": "pending", "activeForm": "Reviewing code"},
+    {"content": "Assess code quality metrics", "status": "pending", "activeForm": "Assessing code quality"},
+    {"content": "Generate quality report", "status": "pending", "activeForm": "Generating quality report"}
+  ]
+})
 ```
 
-### 跟踪测试执行
+### Tracking Compilation Results
 
-记录每个测试阶段的详细结果：
+If compilation fails, track error resolution:
 
-```python
-# 在compile_check步骤中
-manager.start_step("compile_check")
-
-# 执行编译
-compile_result = compile_code()
-
-# 记录编译结果
-manager.manager.create_todo(
-    todo_id="compile_result",
-    content=f"编译结果: {'成功' if compile_result.success else '失败'}",
-    status="completed",
-    metadata={
-        "exit_code": compile_result.exit_code,
-        "error_count": compile_result.error_count,
-        "warning_count": compile_result.warning_count,
-        "duration": compile_result.duration
-    }
-)
-
-if compile_result.success:
-    manager.manager.complete_step("compile_check", "编译成功")
-else:
-    # 记录每个错误
-    for i, error in enumerate(compile_result.errors):
-        manager.manager.create_todo(
-            todo_id=f"compile_error_{i}",
-            content=f"编译错误: {error['file']}:{error['line']}",
-            status="pending",
-            metadata=error
-        )
-    manager.manager.fail_step("compile_check", f"编译失败，{len(compile_result.errors)} 个错误")
+```javascript
+// After compilation failure
+TodoWrite({
+  "todos": [
+    {"activeForm": "Compiling Cangjie code", "content": "Compile Cangjie code with cjpm build", "status": "in_progress"},
+    {"activeForm": "Fixing compilation error", "content": "Fix compilation error: Service.cj:15 Type not found", "status": "pending"},
+    {"activeForm": "Fixing compilation error", "content": "Fix compilation error: Helper.cj:42 Method not found", "status": "pending"},
+    {"activeForm": "Re-compiling code", "content": "Re-compile after fixes", "status": "pending"},
+    {"activeForm": "Running tests", "content": "Run tests with cjpm test", "status": "pending"},
+    {"activeForm": "Reviewing code", "content": "Review code and compare with Java original", "status": "pending"},
+    {"activeForm": "Assessing code quality", "content": "Assess code quality metrics", "status": "pending"}
+  ]
+})
 ```
 
-### 跟踪测试用例
+### Tracking Test Cases
 
-如果有多个测试用例，可以逐个跟踪：
+For multiple test cases, track each one:
 
-```python
-# 在run_tests步骤中
-manager.start_step("run_tests")
-test_cases = get_test_cases()
-
-for i, test_case in enumerate(test_cases):
-    test_id = f"test_{i}"
-    manager.manager.create_todo(
-        todo_id=test_id,
-        content=f"测试用例: {test_case['name']}",
-        status="pending",
-        metadata={"test_name": test_case["name"]}
-    )
-
-    # 运行测试
-    manager.manager.start_step(test_id)
-    try:
-        result = run_test(test_case)
-
-        if result.passed:
-            manager.manager.complete_step(test_id, "测试通过")
-        else:
-            manager.manager.fail_step(test_id, f"测试失败: {result.error}")
-
-    except Exception as e:
-        manager.manager.fail_step(test_id, str(e))
-
-    # 显示进度
-    if (i + 1) % 10 == 0:
-        manager.print_status()
-
-manager.complete_step("run_tests", f"完成 {len(test_cases)} 个测试用例")
+```javascript
+// After identifying test cases
+TodoWrite({
+  "todos": [
+    {"activeForm": "Compiling Cangjie code", "content": "Compile Cangjie code with cjpm build", "status": "completed"},
+    {"activeForm": "Running UserServiceTest", "content": "Run test: UserServiceTest", "status": "in_progress"},
+    {"activeForm": "Running DataServiceTest", "content": "Run test: DataServiceTest", "status": "pending"},
+    {"activeForm": "Running ControllerTest", "content": "Run test: ControllerTest", "status": "pending"},
+    {"activeForm": "Reviewing code", "content": "Review code and compare with Java original", "status": "pending"},
+    {"activeForm": "Assessing code quality", "content": "Assess code quality metrics", "status": "pending"}
+  ]
+})
 ```
 
-### TODO状态跟踪
+### Session Resumption
 
-测试过程中的关键检查点：
+To resume an interrupted test process:
 
-1. **compile_check** - 编译检查，验证代码无错误
-2. **run_tests** - 运行测试，验证功能正确性
-3. **code_review** - 代码审查，对比Java原始代码
-4. **quality_assessment** - 质量评估，评估代码质量
-5. **generate_report** - 生成测试报告
+1. Check checkpoint file at `<output_dir>/.java2cangjie_checkpoint.md`
+2. Read the checkpoint to determine which tests have been run
+3. Create TodoWrite with appropriate statuses based on checkpoint
+4. Continue from the first non-completed step
 
-每个步骤完成后会自动保存状态，支持断点续传。
-
-### 断点续传示例
-
-如果测试过程中断（如编译失败、测试异常等），下次启动时自动恢复：
-
-```python
-def main():
-    manager = SkillTodoManager("java2cangjie-test", "session_123")
-
-    # 检查是否有未完成的测试
-    if manager.can_resume():
-        print("检测到未完成的测试任务")
-        manager.print_status()
-
-        # 获取已完成和待处理的步骤
-        completed = manager.manager.get_completed_todos()
-        failed = manager.manager.get_failed_todos()
-
-        if failed:
-            print(f"发现 {len(failed)} 个失败的步骤")
-            # 决定是否继续或重新开始
-            response = ask_user("是否继续测试？(y/n)")
-            if response.lower() == 'n':
-                manager.clear_state()
-                start_new_test(manager)
-                return
-
-        # 恢复执行
-        resume_test(manager)
-    else:
-        # 全新开始
-        start_new_test(manager)
-
-    # 完成后清理状态
-    manager.clear_state()
-```
-
-### 测试结果汇总
-
-生成详细的测试结果汇总：
-
-```python
-# 在generate_report步骤中
-manager.start_step("generate_report")
-
-# 收集所有测试结果
-compile_result = manager.manager.get_todo("compile_result")
-test_results = manager.manager.get_todos_by_status("completed")
-failed_tests = manager.manager.get_todos_by_status("failed")
-
-# 生成报告
-report = {
-    "compilation": {
-        "success": compile_result.metadata.get("exit_code") == 0,
-        "errors": compile_result.metadata.get("error_count", 0),
-        "warnings": compile_result.metadata.get("warning_count", 0)
-    },
-    "tests": {
-        "total": len(test_results),
-        "passed": len([t for t in test_results if "测试通过" in t.metadata.get("result", "")]),
-        "failed": len(failed_tests)
-    },
-    "quality": {
-        "readability": "Good",
-        "maintainability": "Good",
-        "correctness": "Verified"
-    }
-}
-
-manager.manager.complete_step("generate_report", "测试报告已生成")
+```javascript
+// Example: Resuming mid-test
+TodoWrite({
+  "todos": [
+    {"activeForm": "Compiling Cangjie code", "content": "Compile Cangjie code with cjpm build", "status": "completed"},
+    {"activeForm": "Running tests", "content": "Run tests with cjpm test", "status": "in_progress"},
+    {"activeForm": "Reviewing code", "content": "Review code and compare with Java original", "status": "pending"},
+    {"activeForm": "Assessing code quality", "content": "Assess code quality metrics", "status": "pending"},
+    {"activeForm": "Generating quality report", "content": "Generate quality report", "status": "pending"}
+  ]
+})
 ```
 
 ## Related Skills
