@@ -37,25 +37,22 @@ The translation process follows these steps:
 To translate a Java project:
 
 ```bash
-# Step 1: Setup environment
-Use java2cangjie-setup skill
-
-# Step 2: Translate project
+# Step 1: Translate project
 Use java2cangjie-translate skill
 
-# Step 3: Analyze errors
+# Step 2: Analyze errors
 Use java2cangjie-analyze skill
 
-# Step 4: Confirm modifications
+# Step 3: Confirm modifications
 Use java2cangjie-confirm skill
 
-# Step 5: Fix errors
+# Step 4: Fix errors
 Use java2cangjie-fix skill
 
-# Step 6: Test code
+# Step 5: Test code
 Use java2cangjie-test skill
 
-# Step 7: Generate report
+# Step 6: Generate report
 Use java2cangjie-report skill
 ```
 
@@ -107,13 +104,12 @@ This is the entry point skill that orchestrates all translation steps.
 
 ### Sub-Skills
 
-1. **java2cangjie-setup** - Environment setup and configuration
-2. **java2cangjie-translate** - Execute j2cj translation
-3. **java2cangjie-analyze** - Analyze translation errors
-4. **java2cangjie-confirm** - User confirmation step
-5. **java2cangjie-fix** - Fix translation errors
-6. **java2cangjie-test** - Test Cangjie code
-7. **java2cangjie-report** - Generate translation report
+1. **java2cangjie-translate** - Execute j2cj translation
+2. **java2cangjie-analyze** - Analyze translation errors
+3. **java2cangjie-confirm** - User confirmation step
+4. **java2cangjie-fix** - Fix translation errors
+5. **java2cangjie-test** - Test Cangjie code
+6. **java2cangjie-report** - Generate translation report
 
 ### Skill Invocation Order
 
@@ -121,8 +117,6 @@ The skills should be invoked in this order:
 
 ```
 using-java2cangjie (main)
-  ↓
-java2cangjie-setup
   ↓
 java2cangjie-translate
   ↓
@@ -244,7 +238,6 @@ Use this skill system when:
 
 To use this skill system, invoke the appropriate sub-skill based on your current task:
 
-- **java2cangjie-setup** - Use when setting up the translation environment
 - **java2cangjie-translate** - Use when translating Java code
 - **java2cangjie-analyze** - Use when analyzing translation errors
 - **java2cangjie-confirm** - Use when confirming modifications

@@ -420,7 +420,7 @@ TodoWrite({
 ## Related Skills
 
 - **java2cangjie** - Main translation skill
-- **java2cangjie-setup** - Environment setup
+
 - **java2cangjie-translate** - Execute translation (prerequisite)
 - **java2cangjie-confirm** - Confirm modifications (next step)
 - **java2cangjie-fix** - Fix translation errors

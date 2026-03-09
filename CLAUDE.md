@@ -64,13 +64,12 @@ skills/
 
 ### Translation Workflow
 
-1. **Setup** - Configure environment (use `java2cangjie-setup` skill)
-2. **Translate** - Execute j2cj (outputs to `j2cjgenerated/` directory)
-3. **Analyze** - Find `<--` markers, categorize errors, lookup Cangjie docs
-4. **Confirm** - Present modification plan for user approval
-5. **Fix** - Execute modify-compile loop (max 20 iterations), fix in dependency order
-6. **Test** - Compile with `cjpm build`, run tests
-7. **Report** - Generate translation report
+1. **Translate** - Execute j2cj (outputs to `j2cjgenerated/` directory)
+2. **Analyze** - Find `<--` markers, categorize errors, lookup Cangjie docs
+3. **Confirm** - Present modification plan for user approval
+4. **Fix** - Execute modify-compile loop (max 20 iterations), fix in dependency order
+5. **Test** - Compile with `cjpm build`, run tests
+6. **Report** - Generate translation report
 
 ### Cangjie Documentation
 

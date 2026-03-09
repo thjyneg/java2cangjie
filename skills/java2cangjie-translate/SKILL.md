@@ -13,7 +13,6 @@ This skill executes the Java to Cangjie translation using the j2cj tool. The tra
 
 Before using this skill, ensure:
 
-- Environment is configured (use `java2cangjie-setup` skill)
 - Java source code is ready for translation
 - Output directory is accessible
 
@@ -73,7 +72,6 @@ After completing translation:
 ## Related Skills
 
 - **java2cangjie** - Main translation skill
-- **java2cangjie-setup** - Environment setup (prerequisite)
 - **java2cangjie-analyze** - Analyze translation errors (next step)
 - **java2cangjie-confirm** - Confirm modifications
 - **java2cangjie-fix** - Fix translation errors

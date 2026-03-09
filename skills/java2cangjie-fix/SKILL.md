@@ -476,7 +476,6 @@ Update the checkpoint file after each successful fix:
 ## Related Skills
 
 - **java2cangjie** - Main translation skill
-- **java2cangjie-setup** - Environment setup
 - **java2cangjie-translate** - Execute translation
 - **java2cangjie-analyze** - Analyze errors
 - **java2cangjie-confirm** - Confirm modifications (prerequisite)
