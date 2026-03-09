@@ -242,14 +242,13 @@ class J2CJTranslator:
         sources_file = os.path.normpath(os.path.join(module_path, "sources.txt"))
 
         # 根据操作系统选择正确的路径分隔符
-        module_separator = os.sep
         command = (
             f"{java_cmd} "
             f"-ea -Dextra.log=true "
             f"-Dgenerate.mapping.file={module_name}.cjmap "
             f"-Dj2cj.module.name={module_name} "
             f"--patch-module jdk.compiler={j2cj_jar_path} "
-            f"-m jdk.compiler{module_separator}com.excelsior.j2cj.main.Main "
+            f"-m jdk.compiler/com.excelsior.j2cj.main.Main "
             f"-d {output_dir} "
             f"-classpath {classpath} "
             f"-source 21 -target 21 "
