@@ -3,9 +3,8 @@ import sys
 import subprocess
 import argparse
 import logging
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 SUCCESS_CODE = 0
 SKIP_CODE = -1
@@ -34,79 +33,10 @@ class ModuleResult:
 class ExecutionResults:
     def __init__(self):
         self.modules: List[ModuleResult] = []
-    
+
     def add_module(self, module_result: ModuleResult):
         self.modules.append(module_result)
-    
-    def print_project_results(self, project_name: str):
-        project_modules = [m for m in self.modules if m.project_name == project_name]
-        if not project_modules:
-            return
-            
-        logging.info(f"Modules Results:")
-        
-        skipped_count = 0
-        for module in project_modules:
-            if module.status == SUCCESS_CODE:
-                skipped_count += 1
-                status = "SUCCESS"
-            elif module.status == SKIP_CODE:
-                skipped_count += 1
-                status = "SKIPPED"
-            else:
-                status = f"FAILED (Code: {module.status})"
-            logging.info(f"* {module.module_name}: {status}")
-    
-    def print_domain_results(self):
-        logging.info("=== Domain Execution Summary ===")
-        project_names = {m.project_name for m in self.modules}
-        
-        total_skipped = 0
-        total_success = 0
-        total_processed = 0
-        
-        for project_name in project_names:
-            project_modules = [m for m in self.modules if m.project_name == project_name]
-            skipped = len([m for m in project_modules if m.status == SKIP_CODE])
-            success = len([m for m in project_modules if m.status == SUCCESS_CODE])
-            processed = len(project_modules) - skipped
-            
-            logging.info(f"Project: {project_name}")
-            logging.info(f"Project: {project_name} Results: Modules: {success} succeeded, {skipped} skipped, {len(project_modules)-success-skipped} failed")
-            
-            total_skipped += skipped
-            total_success += success
-            total_processed += processed
-        
-        logging.info(f"Total Summary:")
-        logging.info(f"- {total_success} modules succeeded")
-        logging.info(f"- {total_skipped} modules skipped")
-        logging.info(f"- {total_processed-total_success-total_skipped} modules failed")
 
-class POMAnalyzer:
-    @staticmethod
-    def parse_pom_for_modules(pom_path):
-        """Parse pom.xml to check if it's a pack type and get modules"""
-        try:
-            tree = ET.parse(pom_path)
-            root = tree.getroot()
-            
-            packaging = root.find('{http://maven.apache.org/POM/4.0.0}packaging')
-            if packaging is None or packaging.text != 'pom':
-                logging.warning(f"Not a pack type project: {pom_path}")
-                return None
-                
-            modules = root.findall('{http://maven.apache.org/POM/4.0.0}modules/{http://maven.apache.org/POM/4.0.0}module')
-            if not modules:
-                logging.warning(f"No modules found in pack project: {pom_path}")
-                return None
-                
-            project_dir = os.path.dirname(pom_path)
-            return [os.path.join(project_dir, module.text) for module in modules]
-            
-        except Exception as e:
-            logging.error(f"Failed to parse pom.xml: {str(e)}")
-            return None
 
 class J2CJExecutor:
     def __init__(self):
@@ -119,15 +49,15 @@ class J2CJExecutor:
         # 1. 首先检查环境变量
         j2cj_tool_env = os.getenv("J2CJ_TOOL_PATH")
         if j2cj_tool_env and os.path.exists(os.path.join(j2cj_tool_env, "j2cj.jar")):
-            self.j2cj_tool_path = j2cj_tool_env
+            self.j2cj_tool_path = os.path.normpath(j2cj_tool_env)
             logging.info(f"Using J2CJ_TOOL_PATH from environment: {self.j2cj_tool_path}")
         # 2. 检查skill目录的 j2cj_tool (相对于脚本所在目录)
         elif os.path.exists(os.path.join(script_dir, "..", "j2cj_tool", "j2cj.jar")):
-            self.j2cj_tool_path = os.path.join(script_dir, "..", "j2cj_tool")
+            self.j2cj_tool_path = os.path.normpath(os.path.join(script_dir, "..", "j2cj_tool"))
             logging.info(f"Using j2cj_tool from skill directory: {self.j2cj_tool_path}")
         # 3. 检查项目根目录的 skills/java2cangjie-translate/j2cj_tool
         elif os.path.exists(os.path.join(project_root, "skills", "java2cangjie-translate", "j2cj_tool", "j2cj.jar")):
-            self.j2cj_tool_path = os.path.join(project_root, "skills", "java2cangjie-translate", "j2cj_tool")
+            self.j2cj_tool_path = os.path.normpath(os.path.join(project_root, "skills", "java2cangjie-translate", "j2cj_tool"))
             logging.info(f"Using j2cj_tool from skills/java2cangjie-translate directory: {self.j2cj_tool_path}")
         # 4. 找不到则报错并退出
         else:
@@ -238,7 +168,6 @@ class J2CJTranslator:
 
     def __init__(self):
         self.executor = J2CJExecutor()
-        self.pom_analyzer = POMAnalyzer()
         self.results = ExecutionResults()
     
     def find_project_root(self, module_path):
@@ -261,13 +190,15 @@ class J2CJTranslator:
 
     def execute_module(self, module_path, project_name):
         """Execute j2cj translation for a single module"""
+        # 归一化模块路径
+        module_path = os.path.normpath(module_path)
         module_name = os.path.basename(module_path)
         
         if not os.path.exists(module_path):
             error_msg = f"Path does not exist: ({module_path})"
             logging.error(error_msg)
             self.results.add_module(
-                ModuleResult(name=module_name, path=module_path, status=-1, error=error_msg)
+                ModuleResult(project_name=project_name, module_name=module_name, path=module_path, status=-1, error=error_msg)
             )
             return -1
 
@@ -287,39 +218,46 @@ class J2CJTranslator:
             return 0
         else: 
             logging.info(f"Processing module: ({module_path})")
-            with open(f"{module_path}/sources.txt", "w") as f:
+            with open(os.path.join(module_path, "sources.txt"), "w") as f:
                 f.write("\n".join(java_files))
 
         classpath = self.executor.generate_classpath(module_path)
-        with open(f"{module_path}/j2cj_jars.txt", "w") as f:
+        with open(os.path.join(module_path, "j2cj_jars.txt"), "w") as f:
             f.write(classpath)
         
-        log_file = f"{module_path}/j2cjoutput.log"
+        log_file = os.path.join(module_path, "j2cjoutput.log")
 
         project_root = self.find_project_root(module_path)
-        output_dir = os.path.join(project_root, "j2cjgenerated")
+        output_dir = os.path.normpath(os.path.join(project_root, "cangjie_output"))
         logging.info(f"Output directory: {output_dir}")
 
         # 构建 java 命令
         if self.executor.jdk_path_j2cj == "java":
             java_cmd = "java"
         else:
-            java_cmd = f"{self.executor.jdk_path_j2cj}/bin/java"
+            java_cmd = os.path.join(self.executor.jdk_path_j2cj, "bin", "java")
 
+        # 归一化所有路径
+        j2cj_jar_path = os.path.normpath(os.path.join(self.executor.j2cj_tool_path, "j2cj.jar"))
+        sources_file = os.path.normpath(os.path.join(module_path, "sources.txt"))
+
+        # 根据操作系统选择正确的路径分隔符
+        module_separator = os.sep
         command = (
-            f"timeout {self.executor.timeout} {java_cmd} "
-            f"-ea -Dextra.log=true -Dfile.encoding=UTF-8 "
+            f"{java_cmd} "
+            f"-ea -Dextra.log=true "
             f"-Dgenerate.mapping.file={module_name}.cjmap "
             f"-Dj2cj.module.name={module_name} "
-            f"--patch-module jdk.compiler={self.executor.j2cj_tool_path}/j2cj.jar "
-            f"-m jdk.compiler/com.excelsior.j2cj.main.Main "
+            f"--patch-module jdk.compiler={j2cj_jar_path} "
+            f"-m jdk.compiler{module_separator}com.excelsior.j2cj.main.Main "
             f"-d {output_dir} "
             f"-classpath {classpath} "
-            f"-source 21 -target 21 -sourcepath com "
-            f"@{module_path}/sources.txt > {log_file} 2>&1"
+            f"-source 21 -target 21 "
+            f"-sourcepath src "
+            f"@{sources_file} > {log_file} 2>&1"
         )
         
-        logging.debug("  Executing j2cj command")
+        logging.info(f"  Executing j2cj command:{command}")
         try:
             process = subprocess.Popen(
                 command,
@@ -353,100 +291,28 @@ class J2CJTranslator:
             )
             return -1
 
-    def execute_project(self, project_path):
-        """Execute j2cj for all modules in a project"""
-        project_path = os.path.normpath(project_path)
-        project_name = os.path.basename(project_path)
-        logging.debug(f"Project path: {project_path}")
-        logging.info(f"Starting batch processing for project: {project_name}")
-        pom_path = os.path.join(project_path, "pom.xml")
-        if not os.path.exists(pom_path):
-            error_msg = f"No pom.xml found in {project_path}, skipping batch processing"
-            logging.warning(error_msg)
-            return -1
-            
-        modules = self.pom_analyzer.parse_pom_for_modules(pom_path)
-        if not modules:
-            return -1
-            
-        logging.info(f"Found {len(modules)} modules in project:")
-        for i, module in enumerate(modules, 1):
-            logging.info(f"  {i}. {os.path.basename(module)}")
-        
-        results = []
-        for module in modules:
-            result = self.execute_module(module, project_name)
-            results.append(result)
-            
-        self.results.print_project_results(project_name)
-        return 0 if all(r == 0 for r in results) else 1
 
-    def execute_domain(self, domain_path):
-        """Execute j2cj for all projects in a domain"""
-        logging.info(f"Starting domain processing for: {domain_path}")
-        if not os.path.exists(domain_path):
-            logging.error(f"Domain path does not exist: {domain_path}")
-            return -1
-            
-        projects = [d for d in os.listdir(domain_path) 
-                   if os.path.isdir(os.path.join(domain_path, d))]
-        
-        if not projects:
-            logging.warning(f"No projects found in domain: {domain_path}")
-            return -1
-            
-        logging.info(f"Found {len(projects)} projects in domain ( show list in debug ):")
-        for i, project in enumerate(projects, 1):
-            logging.debug(f"  {i}. {project}")
-        
-        results = []
-        for project in projects:
-            project_path = os.path.join(domain_path, project)
-            logging.debug(f"Processing project {project} ({project_path})")
-            result = self.execute_project(project_path)
-            results.append(result)
-        
-        self.results.print_domain_results()
-        
-        if all(r == 0 for r in results):
-            logging.info("All projects processed successfully")
-            return 0
-        else:
-            logging.error(f"Some projects failed to process. Results: {results}")
-            return 1
 
 def main():
     """J2CJ Main Function"""
     parser = argparse.ArgumentParser(
-        description='Execute j2cj conversion in domain, project or module mode'
+        description='Execute j2cj conversion in module mode'
     )
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        '-d', '--domain-path',
-        type=str,
-        help='Path to the domain directory containing multiple projects'
-    )
-    group.add_argument(
-        '-p', '--project-path', 
-        type=str,
-        help='Path to the project directory (must contain pom.xml) for batch processing'
-    )
-    group.add_argument(
+    parser.add_argument(
         '-m', '--module-path',
         type=str,
-        help='Path to the module directory for single module processing'
+        required=False,
+        default=os.getcwd(),
+        help='Path to the module directory for single module processing (default: current working directory)'
     )
-    
+
     args = parser.parse_args()
-    
+
+    # 归一化模块路径
+    module_path = os.path.normpath(args.module_path)
+
     translator = J2CJTranslator()
-    
-    if args.domain_path:
-        return translator.execute_domain(args.domain_path)
-    elif args.project_path:
-        return translator.execute_project(args.project_path)
-    elif args.module_path:
-        return translator.execute_module(args.module_path, os.path.basename(args.module_path))
+    return translator.execute_module(module_path, os.path.basename(module_path))
 
 if __name__ == "__main__":
     main()
