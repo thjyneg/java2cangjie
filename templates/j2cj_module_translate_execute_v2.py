@@ -17,15 +17,27 @@ SKIP_CODE = -1
 MAVEN_NAMESPACE = "{http://maven.apache.org/POM/4.0.0}"
 
 # Configure logging
-def setup_logging():
+class LogConfig:
+    """全局日志配置"""
+    global_output_dir = None
+
+def setup_logging(output_dir=None):
     """配置日志系统，支持控制台和文件输出"""
+    # 如果有输出目录，更新全局配置
+    if output_dir:
+        LogConfig.global_output_dir = output_dir
+    
     log_level = os.getenv("J2CJ_LOG_LEVEL", "INFO").upper()
     log_format = '%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
 
     # 创建日志目录
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    if LogConfig.global_output_dir:
+        log_dir = os.path.join(LogConfig.global_output_dir, "logs")
+    else:
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    
     if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
 
     # 配置日志处理器
     handlers = [
@@ -42,8 +54,11 @@ def setup_logging():
         format=log_format,
         handlers=handlers
     )
+    
+    logging.info(f"Logging initialized. Log directory: {log_dir}")
 
-setup_logging()
+# 初始化日志配置（默认配置，会在main函数中根据命令行参数重新配置）
+setup_logging(None)
 
 
 
@@ -673,6 +688,9 @@ def main():
     )
     
     args = parser.parse_args()
+    
+    # 重新配置日志，使用指定的输出目录
+    setup_logging(args.output_dir)
     
     translator = J2CJTranslator(output_dir=args.output_dir)
     
