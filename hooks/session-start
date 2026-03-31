@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# SessionStart hook for java2cangjie plugin
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Read using-java2cangjie skill content
+SKILL_PATH="${PLUGIN_ROOT}/skills/using-java2cangjie/SKILL.md"
+if [ ! -f "$SKILL_PATH" ]; then
+  echo '{"error": "Bootstrap skill not found"}'
+  exit 0
+fi
+
+content=$(cat "$SKILL_PATH" 2>&1 || echo "Error reading skill file")
+
+# Escape string for JSON embedding using bash parameter substitution
+escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+escaped=$(escape_for_json "$content")
+
+session_context="<EXTREMELY_IMPORTANT>\nYou have the Java to Cangjie translation system.\n\n**Below is the full content of your 'using-java2cangjie' skill - your introduction to Java-to-Cangjie translation. For detailed workflows, use the 'Skill' tool:**\n\n${escaped}\n</EXTREMELY_IMPORTANT>"
+
+# Output context injection as JSON.
+# Cursor hooks expect additional_context.
+# Claude Code hooks expect hookSpecificOutput.additionalContext.
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
+else
+  printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
+fi
+
+exit 0
