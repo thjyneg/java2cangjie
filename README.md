@@ -10,11 +10,61 @@
 - **双平台支持** - OpenCode（插件工具 + 技能）+ Claude Code（技能 + hooks）
 - **完整仓颉文档** - 包含基础类型、标准库 API、语言手册和示例代码
 
+## 安装
+
+### 前置要求
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 或 [OpenCode](https://opencode.ai/) 已安装
+- 仓颉编译器 `cjpm` 已安装（用于编译验证，可选）
+
+### 方式一：Claude Code 插件
+
+```bash
+# 1. 克隆仓库到 Claude Code 插件目录
+git clone https://gitcode.com/zwcoder/java2cangjie.git ~/.claude/plugins/java2cangjie
+
+# 2. 验证安装成功 — 启动新的 Claude Code 会话，检查系统提示包含 Java to Cangjie 翻译系统
+claude
+
+# 3.（可选）将插件添加到项目级 .claude/settings.json
+# 在 "permissions" 中允许插件目录访问
+```
+
+安装后 Claude Code 会通过 `hooks/session-start` 自动注入 Bootstrap 技能到系统提示。
+
+### 方式二：OpenCode 插件
+
+```bash
+# 1. 克隆仓库
+git clone https://gitcode.com/zwcoder/java2cangjie.git ~/plugins/java2cangjie
+
+# 2. 在项目根目录创建或编辑 .opencode/plugins/java2cangjie.js
+# 内容为：
+#   export { Java2CangjiePlugin } from '~/plugins/java2cangjie/.opencode/plugins/java2cangjie.js'
+
+# 3. 或直接在 OpenCode 配置中指定插件路径
+# .opencode/config.json:
+# {
+#   "plugins": ["~/plugins/java2cangjie/.opencode/plugins/java2cangjie.js"]
+# }
+
+# 4. 验证：启动 OpenCode，检查 skill 工具是否列出 java2cangjie-* 和 cangjie-* 技能
+opencode
+```
+
+OpenCode 插件提供额外的工作流控制工具：`analyze_project`、`next_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
+
+### 验证安装
+
+安装成功后，在新会话中输入：
+
+```
+请翻译一个 Java 项目
+```
+
+如果插件正常加载，AI 会识别翻译任务并调用相应的翻译技能。
+
 ## 快速开始
-
-### 安装
-
-将本项目作为 OpenCode 或 Claude Code 插件安装（详见设计文档 Phase 0）。
 
 ### 使用
 
@@ -39,21 +89,25 @@
 
 ```
 java2cangjie-superpowers/
-├── skills/                         # 4 个技能
+├── skills/                         # 10 个技能
 │   ├── using-java2cangjie/         # Bootstrap 技能
 │   ├── java2cangjie-translate/     # 翻译执行
-│   ├── java2cangjie-fix/           # 错误修复
-│   └── java2cangjie-report/        # 报告生成
-├── agents/                         # 2 个代理
+│   ├── java2cangjie-fix/           # 错误修复 + error-patterns.md
+│   ├── java2cangjie-report/        # 报告生成
+│   ├── cangjie-lang-features/      # 仓颉语言特性
+│   ├── cangjie-std/                # 标准库速查
+│   ├── cangjie-stdx/               # 扩展标准库
+│   ├── cangjie-toolchains/         # 工具链文档
+│   ├── cangjie-regulations/        # 编码规范
+│   └── cangjie-original-docs/      # 原始文档 fallback
+├── agents/                         # 3 个代理
+│   ├── cangjie-engineer.md         # 仓颉开发专家
 │   ├── translation-reviewer.md     # 翻译质量审查
 │   └── error-fixer.md              # 错误修复执行
-├── .opencode/plugins/              # OpenCode 插件
-├── hooks/                          # Claude Code hooks
-├── docs/cangjie/                   # 仓颉语言文档
-│   ├── extra/                      # 基础类型
-│   ├── libs/std/                   # 标准库 API
-│   ├── libs/stdx/                  # 扩展库
-│   └── manual/                     # 语言手册
+├── .opencode/plugins/              # OpenCode 插件 (tools + config + bootstrap)
+├── hooks/                          # Claude Code hooks (session-start)
+├── docs/                           # 设计文档
+│   └── superpowers/specs/          # 设计规范
 └── templates/checkpoint.md         # 检查点模板
 ```
 
@@ -70,12 +124,14 @@ java2cangjie-superpowers/
 
 ## 文档查找
 
-| 查找内容 | 路径 |
+| 查找内容 | 技能 |
 |---------|------|
-| 基础类型 | `docs/cangjie/extra/` |
-| 标准库 API | `docs/cangjie/libs/std/` |
-| 示例代码 | `docs/cangjie/libs/std/*_samples/` |
-| 语言手册 | `docs/cangjie/manual/` |
+| 语言语法/特性 | `cangjie-lang-features` |
+| 标准库 API | `cangjie-std` |
+| 扩展库 (JSON/配置等) | `cangjie-stdx` |
+| 编译器/工具链 | `cangjie-toolchains` |
+| 编码规范 | `cangjie-regulations` |
+| 完整原始文档 | `cangjie-original-docs` |
 
 ## 设计文档
 
