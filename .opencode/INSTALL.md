@@ -7,11 +7,13 @@
 
 ## Installation
 
+### 方式一：从 GitHub 自动安装（推荐）
+
 在 `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）的 `plugin` 数组中添加：
 
 ```json
 {
-  "plugin": ["java2cangjie-superpowers@git+https://gitcode.com/zwcoder/java2cangjie.git"]
+  "plugin": ["java2cangjie-superpowers@git+https://github.com/thjyneg/java2cangjie.git"]
 }
 ```
 
@@ -22,6 +24,62 @@
 ```bash
 opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie
 ```
+
+**固定版本**：URL 后加 `#<tag>`，例如：
+
+```json
+{
+  "plugin": ["java2cangjie-superpowers@git+https://github.com/thjyneg/java2cangjie.git#v3.0.0"]
+}
+```
+
+### 方式二：项目级本地安装
+
+将仓库克隆到项目中，OpenCode 启动时会自动加载 `.opencode/plugins/` 目录下的插件：
+
+```bash
+# 在项目根目录下
+git clone https://github.com/thjyneg/java2cangjie.git .java2cangjie
+```
+
+然后在项目根目录创建 `.opencode/plugins/` 目录，并添加符号链接：
+
+**Linux/macOS：**
+```bash
+mkdir -p .opencode/plugins
+ln -s ../../.java2cangjie/.opencode/plugins/java2cangjie.js .opencode/plugins/java2cangjie.js
+```
+
+**Windows（以管理员身份运行）：**
+```powershell
+New-Item -ItemType Directory -Force -Path .opencode\plugins
+New-Item -ItemType SymbolicLink -Path ".opencode\plugins\java2cangjie.js" -Target ".java2cangjie\.opencode\plugins\java2cangjie.js"
+```
+
+> **注意**：插件通过相对路径 `../../skills` 定位技能目录，因此必须使用符号链接，不能直接复制文件。
+
+### 方式三：全局本地安装
+
+将仓库克隆到 OpenCode 全局插件目录：
+
+```bash
+# 克隆到全局配置目录
+git clone https://github.com/thjyneg/java2cangjie.git ~/.config/opencode/java2cangjie
+```
+
+创建符号链接到全局插件目录：
+
+**Linux/macOS：**
+```bash
+ln -s ../java2cangjie/.opencode/plugins/java2cangjie.js ~/.config/opencode/plugins/java2cangjie.js
+```
+
+**Windows（以管理员身份运行）：**
+```powershell
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.config\opencode\plugins\java2cangjie.js" -Target "$env:USERPROFILE\.config\opencode\java2cangjie\.opencode\plugins\java2cangjie.js"
+```
+
+这样在任何项目中启动 OpenCode 都可以使用 java2cangjie 插件。
 
 ## Plugin Tools
 
@@ -63,14 +121,16 @@ use skill tool to list skills
 请将 /path/to/java-project 翻译为仓颉语言
 ```
 
-## Pinning a Version
+## Updating
 
-在 URL 后加 `#<tag>` 固定版本：
+### GitHub 自动安装方式
 
-```json
-{
-  "plugin": ["java2cangjie-superpowers@git+https://gitcode.com/zwcoder/java2cangjie.git#v3.0.0"]
-}
+重启 OpenCode 即可自动更新。固定版本需手动更改 tag。
+
+### 本地安装方式
+
+```bash
+cd <clone_dir> && git pull
 ```
 
 ## Troubleshooting
@@ -78,13 +138,14 @@ use skill tool to list skills
 ### Plugin not loading
 
 1. 检查日志：`opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie`
-2. 确认 `opencode.json` 中 plugin 配置正确
+2. 确认配置正确（GitHub URL 或本地符号链接）
 3. 确保 OpenCode 版本 >= 1.0.0
 
 ### Skills not found
 
 1. 使用 `skill` 工具列出已发现的技能
 2. 检查插件是否成功加载（见上方日志检查）
+3. 本地安装时确认符号链接指向正确（`../../skills` 相对路径）
 
 ### Tool mapping
 
@@ -96,8 +157,8 @@ use skill tool to list skills
 
 ## Claude Code Installation
 
-如使用 Claude Code，请参考项目根目录 [README.md](../README.md) 中的「方式一：Claude Code 插件」章节。
+如使用 Claude Code，请参考项目根目录 [README.md](../README.md) 中的「方式一：Claude Code」章节。
 
 ## Getting Help
 
-- 报告问题：https://gitcode.com/zwcoder/java2cangjie/issues
+- 报告问题：https://github.com/thjyneg/java2cangjie/issues

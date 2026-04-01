@@ -17,54 +17,96 @@
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 或 [OpenCode](https://opencode.ai/) 已安装
 - 仓颉编译器 `cjpm` 已安装（用于编译验证，可选）
 
-### 方式一：Claude Code 插件
+### 方式一：Claude Code
+
+Claude Code 通过 hooks 在会话启动时自动注入 Bootstrap 技能。
+
+**步骤 1：克隆仓库**
 
 ```bash
-# 1. 克隆仓库到 Claude Code 插件目录
-git clone https://gitcode.com/zwcoder/java2cangjie.git ~/.claude/plugins/java2cangjie
-
-# 2. 验证安装成功 — 启动新的 Claude Code 会话，检查系统提示包含 Java to Cangjie 翻译系统
-claude
-
-# 3.（可选）将插件添加到项目级 .claude/settings.json
-# 在 "permissions" 中允许插件目录访问
+git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2cangjie
 ```
 
-安装后 Claude Code 会通过 `hooks/session-start` 自动注入 Bootstrap 技能到系统提示。
+**步骤 2：注册 hooks**
 
-### 方式二：OpenCode 插件
+在项目级 `.claude/settings.json`（或全局 `~/.claude/settings.json`）中添加：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|clear|compact",
+      "hooks": [{
+        "type": "command",
+        "command": "\"<插件目录>/hooks/run-hook.cmd\" session-start",
+        "async": false
+      }]
+    }]
+  }
+}
+```
+
+将 `<插件目录>` 替换为实际路径，例如：
+
+- **macOS/Linux**: `"/home/you/.claude/plugins/java2cangjie"`
+- **Windows**: `"C:\\Users\\you\\.claude\\plugins\\java2cangjie"`
+
+> **Windows 用户注意**：`run-hook.cmd` 是跨平台 polyglot 脚本，会自动调用 Git Bash 执行 hook，无需额外配置。
+
+**步骤 3：验证**
+
+启动新的 Claude Code 会话，系统提示应包含 Java to Cangjie 翻译系统。如果正常，输入：
+
+```
+请翻译一个 Java 项目
+```
+
+AI 会识别翻译任务并调用相应技能。
+
+### 方式二：OpenCode
+
+支持三种安装方式，详见 [.opencode/INSTALL.md](.opencode/INSTALL.md)。
+
+#### 方式 2a：从 GitHub 自动安装（推荐）
 
 在 `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）的 `plugin` 数组中添加：
 
 ```json
 {
   "plugin": [
-    "java2cangjie-superpowers@git+https://gitcode.com/zwcoder/java2cangjie.git"
+    "java2cangjie-superpowers@git+https://github.com/thjyneg/java2cangjie.git"
   ]
 }
 ```
 
-重启 OpenCode，插件会自动安装并注册所有技能。
+重启 OpenCode，插件会自动安装并注册所有技能和工具。
 
-**验证**：启动 OpenCode 后，使用 skill 工具列出技能，应包含 `java2cangjie-*` 和 `cangjie-*` 系列。也可以运行：
+**验证**：使用 skill 工具列出技能，应包含 `java2cangjie-*` 和 `cangjie-*` 系列：
 
 ```bash
 opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie
 ```
 
-> **如需固定版本**：在 URL 后加 `#<tag>`，例如 `#v3.0.0`。
+> **固定版本**：URL 后加 `#<tag>`，例如 `#v3.0.0`。
 
-OpenCode 插件提供额外的工作流控制工具：`analyze_project`、`next_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
+#### 方式 2b：项目级本地安装
 
-### 验证安装
+将仓库克隆到项目中，通过符号链接加载插件：
 
-安装成功后，在新会话中输入：
-
+```bash
+git clone https://github.com/thjyneg/java2cangjie.git .java2cangjie
+mkdir -p .opencode/plugins
+ln -s ../../.java2cangjie/.opencode/plugins/java2cangjie.js .opencode/plugins/java2cangjie.js
 ```
-请翻译一个 Java 项目
+
+#### 方式 2c：全局本地安装
+
+```bash
+git clone https://github.com/thjyneg/java2cangjie.git ~/.config/opencode/java2cangjie
+ln -s ../java2cangjie/.opencode/plugins/java2cangjie.js ~/.config/opencode/plugins/java2cangjie.js
 ```
 
-如果插件正常加载，AI 会识别翻译任务并调用相应的翻译技能。
+OpenCode 插件额外提供工作流控制工具：`analyze_project`、`next_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
 
 ## 快速开始
 
