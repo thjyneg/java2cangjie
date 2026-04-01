@@ -14,6 +14,7 @@
     ".opencode/plugins/java2cangjie.js",
     "skills/",
     "agents/",
+    "hooks/",
     "CLAUDE.md"
   ],
   "peerDependencies": {
