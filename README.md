@@ -34,35 +34,25 @@ claude
 
 ### 方式二：OpenCode 插件
 
-OpenCode 自动加载项目级 `.opencode/plugins/` 目录中的插件文件，无需额外配置。
+在 `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）的 `plugin` 数组中添加：
 
-**项目级安装（推荐）**：直接将仓库克隆到项目中，`.opencode/plugins/java2cangjie.js` 会被自动发现。
-
-```bash
-# 在项目根目录下
-git clone https://gitcode.com/zwcoder/java2cangjie.git ./java2cangjie
-# 或通过 submodule
-git submodule add https://gitcode.com/zwcoder/java2cangjie.git ./java2cangjie
-
-# 安装插件依赖（OpenCode 会自动执行 bun install）
-# 依赖声明在 .opencode/package.json 中
+```json
+{
+  "plugin": [
+    "java2cangjie-superpowers@git+https://gitcode.com/zwcoder/java2cangjie.git"
+  ]
+}
 ```
 
-**全局安装**：将插件文件复制/链接到全局插件目录。
+重启 OpenCode，插件会自动安装并注册所有技能。
+
+**验证**：启动 OpenCode 后，使用 skill 工具列出技能，应包含 `java2cangjie-*` 和 `cangjie-*` 系列。也可以运行：
 
 ```bash
-# 创建全局插件目录
-mkdir -p ~/.config/opencode/plugins/
-
-# 复制插件文件
-cp java2cangjie/.opencode/plugins/java2cangjie.js ~/.config/opencode/plugins/
-
-# 安装全局依赖
-# 在 ~/.config/opencode/ 目录下创建 package.json:
-# { "dependencies": { "@opencode-ai/plugin": "latest" } }
+opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie
 ```
 
-验证：启动 OpenCode，检查 skill 工具是否列出 java2cangjie-* 和 cangjie-* 技能。
+> **如需固定版本**：在 URL 后加 `#<tag>`，例如 `#v3.0.0`。
 
 OpenCode 插件提供额外的工作流控制工具：`analyze_project`、`next_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
 
