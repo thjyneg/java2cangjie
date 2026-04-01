@@ -4,5 +4,19 @@
   "type": "module",
   "main": ".opencode/plugins/java2cangjie.js",
   "description": "Java to Cangjie translation plugin for OpenCode/Claude Code with incremental dependency-driven AI translation",
-  "keywords": ["translation", "cangjie", "java", "superpowers"]
+  "keywords": ["translation", "cangjie", "java", "superpowers", "opencode"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitcode.com/zwcoder/java2cangjie.git"
+  },
+  "files": [
+    ".opencode/plugins/java2cangjie.js",
+    "skills/",
+    "agents/",
+    "CLAUDE.md"
+  ],
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  }
 }
