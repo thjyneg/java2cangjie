@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { tool } from '@opencode-ai/plugin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -124,7 +125,6 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
       const content = fs.readFileSync(file.path, 'utf8');
       file.lines = content.split('\n').length;
     }
-    // Re-batch: split large files (>200 lines) into their own batch
   }
 
   const dagSummary = batches.map(b => b.files.map(f => f.className).join(', ')).join(' → ');
@@ -200,24 +200,23 @@ ${toolMapping}
       }
     },
 
-    tools: {
-      analyze_project: {
+    tool: {
+      analyze_project: tool({
         description: 'Analyze Java project structure, build dependency graph, return translation batch plan',
-        parameters: {
-          javaPath: { type: 'string', description: 'Path to Java source root directory' },
-          maxBatchSize: { type: 'number', description: 'Max files per batch (default: 3)' },
-          outputDir: { type: 'string', description: 'Output directory for translated files (default: <javaPath>/../j2cjgenerated/)' }
+        args: {
+          javaPath: tool.schema.string().describe('Path to Java source root directory'),
+          maxBatchSize: tool.schema.number().default(3).describe('Max files per batch (default: 3)'),
+          outputDir: tool.schema.string().optional().describe('Output directory for translated files (default: <javaPath>/../j2cjgenerated/)'),
         },
-        execute: async ({ javaPath, maxBatchSize = 3, outputDir }) => {
-          if (!outputDir) {
-            outputDir = path.join(path.dirname(javaPath), 'j2cjgenerated');
-          }
+        async execute(args, context) {
+          const { javaPath, maxBatchSize, outputDir } = args;
+          const outDir = outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
           const result = analyzeJavaDependencies(javaPath, maxBatchSize);
           if (result.error) return result;
 
           currentState = {
             projectPath: javaPath,
-            outputDir,
+            outputDir: outDir,
             totalFiles: result.totalFiles,
             batches: {},
             dagSummary: result.dagSummary,
@@ -231,7 +230,7 @@ ${toolMapping}
               retries: 0
             };
           }
-          saveState(outputDir);
+          saveState(outDir);
 
           return {
             totalFiles: result.totalFiles,
@@ -243,15 +242,15 @@ ${toolMapping}
               dependencies: b.dependencies
             })),
             dagSummary: result.dagSummary,
-            outputDir
+            outputDir: outDir
           };
         }
-      },
+      }),
 
-      next_batch: {
+      next_batch: tool({
         description: 'Get next batch of Java files ready for translation (all dependencies completed)',
-        parameters: {},
-        execute: async () => {
+        args: {},
+        async execute(args, context) {
           if (!currentState) return { error: 'No active project. Call analyze_project first.' };
           for (const [batchId, batch] of Object.entries(currentState.batches)) {
             if (batch.status !== 'pending') continue;
@@ -278,20 +277,21 @@ ${toolMapping}
             progress: { completed, blocked, pending }
           };
         }
-      },
+      }),
 
-      mark_complete: {
+      mark_complete: tool({
         description: 'Mark a translation batch as complete (compilation passed)',
-        parameters: {
-          batchId: { type: 'string', description: 'Batch identifier' },
-          outputFiles: { type: 'array', description: 'Generated Cangjie file paths' }
+        args: {
+          batchId: tool.schema.string().describe('Batch identifier'),
+          outputFiles: tool.schema.array(tool.schema.string()).optional().describe('Generated Cangjie file paths'),
         },
-        execute: async ({ batchId, outputFiles = [] }) => {
+        async execute(args, context) {
+          const { batchId, outputFiles } = args;
           if (!currentState || !currentState.batches[batchId]) {
             return { error: `Batch ${batchId} not found` };
           }
           currentState.batches[batchId].status = 'completed';
-          currentState.batches[batchId].outputFiles = outputFiles;
+          currentState.batches[batchId].outputFiles = outputFiles || [];
           currentState.batches[batchId].completedAt = new Date().toISOString();
           saveState(currentState.outputDir);
 
@@ -303,15 +303,16 @@ ${toolMapping}
             allComplete: completed === Object.keys(currentState.batches).length
           };
         }
-      },
+      }),
 
-      mark_blocked: {
+      mark_blocked: tool({
         description: 'Mark a translation batch as blocked (failed after max retries)',
-        parameters: {
-          batchId: { type: 'string', description: 'Batch identifier' },
-          reason: { type: 'string', description: 'Error description' }
+        args: {
+          batchId: tool.schema.string().describe('Batch identifier'),
+          reason: tool.schema.string().describe('Error description'),
         },
-        execute: async ({ batchId, reason }) => {
+        async execute(args, context) {
+          const { batchId, reason } = args;
           if (!currentState || !currentState.batches[batchId]) {
             return { error: `Batch ${batchId} not found` };
           }
@@ -320,7 +321,6 @@ ${toolMapping}
           currentState.batches[batchId].blockedAt = new Date().toISOString();
           saveState(currentState.outputDir);
 
-          // Check if other batches can still proceed
           const available = Object.entries(currentState.batches).filter(([id, b]) => {
             if (b.status !== 'pending') return false;
             return b.dependencies.every(depId => currentState.batches[depId]?.status === 'completed');
@@ -334,12 +334,12 @@ ${toolMapping}
             availableBatches: available.map(([id]) => id)
           };
         }
-      },
+      }),
 
-      translation_status: {
+      translation_status: tool({
         description: 'Get current translation progress',
-        parameters: {},
-        execute: async () => {
+        args: {},
+        async execute(args, context) {
           if (!currentState) return { error: 'No active project. Call analyze_project first.' };
           const batches = Object.values(currentState.batches);
           return {
@@ -357,7 +357,7 @@ ${toolMapping}
             }))
           };
         }
-      }
+      })
     }
   };
 };

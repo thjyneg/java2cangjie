@@ -40,6 +40,7 @@ All translated Cangjie code is written to `<java_project_dir>/j2cjgenerated/`. T
 java2cangjie-superpowers/
 ├── package.json                         # npm package + plugin entry
 ├── .opencode/
+│   ├── package.json                     # Plugin dependencies (@opencode-ai/plugin)
 │   └── plugins/
 │       └── java2cangjie.js              # OpenCode plugin (tools + config + bootstrap)
 ├── hooks/
@@ -48,24 +49,24 @@ java2cangjie-superpowers/
 │   └── session-start                    # Bootstrap injection script
 ├── skills/
 │   ├── using-java2cangjie/
-│   │   └── SKILL.md                     # Bootstrap skill (<150 lines)
+│   │   └── SKILL.md                     # Bootstrap skill
 │   ├── java2cangjie-translate/
-│   │   └── SKILL.md                     # Translation guidance (<300 lines)
+│   │   └── SKILL.md                     # Translation guidance
 │   ├── java2cangjie-fix/
-│   │   ├── SKILL.md                     # Error fixing workflow (<400 lines)
+│   │   ├── SKILL.md                     # Error fixing workflow
 │   │   └── error-patterns.md            # Common error patterns reference
-│   └── java2cangjie-report/
-│       └── SKILL.md                     # Report generation (<200 lines)
+│   ├── java2cangjie-report/
+│   │   └── SKILL.md                     # Report generation
+│   ├── cangjie-lang-features/           # Core language features
+│   ├── cangjie-std/                     # Standard library quick reference
+│   ├── cangjie-stdx/                    # Extended standard library
+│   ├── cangjie-toolchains/              # Toolchain documentation
+│   ├── cangjie-regulations/             # Coding conventions
+│   └── cangjie-original-docs/           # Full original documentation fallback
 ├── agents/
 │   ├── cangjie-engineer.md              # General Cangjie development expert
 │   ├── translation-reviewer.md          # Quality reviewer (read-only)
 │   └── error-fixer.md                   # Error fix executor (read-write)
-├── docs/
-│   └── cangjie/                         # Cangjie documentation
-│       ├── extra/                       # Basic types: Array, ArrayList, HashMap, etc.
-│       ├── libs/std/                    # Standard library APIs
-│       ├── libs/stdx/                   # Extended libraries
-│       └── manual/                      # Language manual
 ├── templates/
 │   └── checkpoint.md                    # Checkpoint template (for Claude Code manual checkpoints)
 └── CLAUDE.md                            # Project-level instructions
@@ -77,29 +78,42 @@ java2cangjie-superpowers/
 |------|--------|
 | `tools/j2cj/j2cj.jar` | Pure AI translation, no j2cj tool |
 | `scripts/j2cj_translate.py` | No tool invocation needed |
-| `skills/java2cangjie-analyze/` | Merged into `java2cangjie-fix` |
+| `skills/java2cangjie-analyze/` | Replaced by 6 cangjie-* documentation skills |
 | `skills/java2cangjie-test/` | Compile verification in translate skill + plugin tools |
 | `.cursor-plugin/` | Cursor not supported |
 | `hooks/hooks-cursor.json` | Cursor not supported |
+
+### Added in v3.0
+
+| Item | Purpose |
+|------|---------|
+| `skills/cangjie-lang-features/` | Core language features documentation |
+| `skills/cangjie-std/` | Standard library quick reference |
+| `skills/cangjie-stdx/` | Extended standard library |
+| `skills/cangjie-toolchains/` | Toolchain documentation |
+| `skills/cangjie-regulations/` | Coding conventions |
+| `skills/cangjie-original-docs/` | Full original documentation fallback |
+| `agents/cangjie-engineer.md` | General Cangjie development expert agent |
+| `.opencode/package.json` | Plugin dependencies (@opencode-ai/plugin) |
 
 ---
 
 ## 3. Plugin Tools (Deterministic Control)
 
-The OpenCode plugin registers custom tools that enforce the translation workflow. These tools are the "hard control" layer.
+The OpenCode plugin registers custom tools using the official `tool` helper from `@opencode-ai/plugin`. These tools are the "hard control" layer.
 
 ### 3.1 Tool: `analyze_project`
 
 **Purpose**: Scan Java project, build dependency DAG, return topological order.
 
 ```javascript
-analyze_project: {
+analyze_project: tool({
   description: 'Analyze Java project structure, build dependency graph, return translation plan',
-  parameters: {
-    javaPath: { type: 'string', description: 'Path to Java source root' },
-    maxBatchSize: { type: 'number', description: 'Max files per batch (default: 3)' }
+  args: {
+    javaPath: tool.schema.string().describe('Path to Java source root'),
+    maxBatchSize: tool.schema.number().default(3).describe('Max files per batch (default: 3)')
   },
-  execute: async ({ javaPath, maxBatchSize = 3 }) => {
+  async execute(args, context) {
     // 1. Scan Java files recursively
     // 2. Parse import statements
     // 3. Build internal dependency graph
@@ -107,7 +121,7 @@ analyze_project: {
     // 5. Group into batches (leaf nodes first)
     // 6. Return: { totalFiles, batches: [{ id, files, dependencies }], dagSummary }
   }
-}
+})
 ```
 
 **Output Example**:
@@ -128,15 +142,15 @@ analyze_project: {
 **Purpose**: Return the next batch of files ready for translation.
 
 ```javascript
-next_batch: {
+next_batch: tool({
   description: 'Get next batch of Java files ready for translation (all dependencies satisfied)',
-  parameters: {},
-  execute: async () => {
+  args: {},
+  async execute(args, context) {
     // 1. Check which batches have completed dependencies
     // 2. Return first unstarted batch with all deps met
     // Returns: { batchId, files: [{path, size}], ready: true/false }
   }
-}
+})
 ```
 
 ### 3.3 Tool: `mark_complete`
@@ -144,18 +158,18 @@ next_batch: {
 **Purpose**: Mark a translation batch as successfully compiled, unlock dependents.
 
 ```javascript
-mark_complete: {
+mark_complete: tool({
   description: 'Mark a translation batch as complete (compilation passed)',
-  parameters: {
-    batchId: { type: 'string' },
-    outputFiles: { type: 'array', description: 'Generated Cangjie file paths' }
+  args: {
+    batchId: tool.schema.string().describe('Batch identifier'),
+    outputFiles: tool.schema.array(tool.schema.string()).optional().describe('Generated Cangjie file paths')
   },
-  execute: async ({ batchId, outputFiles }) => {
+  async execute(args, context) {
     // 1. Update batch status to 'completed'
     // 2. Save checkpoint
     // 3. Return newly unblocked batches
   }
-}
+})
 ```
 
 ### 3.4 Tool: `mark_blocked`
@@ -163,18 +177,18 @@ mark_complete: {
 **Purpose**: Mark a batch as blocked after failed attempts.
 
 ```javascript
-mark_blocked: {
+mark_blocked: tool({
   description: 'Mark a translation batch as blocked (failed after max retries)',
-  parameters: {
-    batchId: { type: 'string' },
-    reason: { type: 'string', description: 'Error description' }
+  args: {
+    batchId: tool.schema.string().describe('Batch identifier'),
+    reason: tool.schema.string().describe('Error description')
   },
-  execute: async ({ batchId, reason }) => {
+  async execute(args, context) {
     // 1. Update batch status to 'blocked'
     // 2. Save checkpoint
     // 3. Check if any other batches can proceed
   }
-}
+})
 ```
 
 ### 3.5 Tool: `translation_status`
@@ -182,13 +196,13 @@ mark_blocked: {
 **Purpose**: Get current translation progress and state.
 
 ```javascript
-translation_status: {
+translation_status: tool({
   description: 'Get current translation progress, completed/blocked/pending counts',
-  parameters: {},
-  execute: async () => {
+  args: {},
+  async execute(args, context) {
     // Returns: { total, completed, blocked, pending, currentBatch }
   }
-}
+})
 ```
 
 ### 3.6 State Management
@@ -224,9 +238,9 @@ description: Use when translating Java projects or source files to Cangjie langu
 
 **Content** (<150 lines):
 - `<SUBAGENT-STOP>` tag
-- Available skills list with trigger conditions
+- Available skills list with trigger conditions (4 translation + 6 cangjie documentation)
 - Available plugin tools list
-- Key resource paths (`docs/cangjie/`)
+- Key resource references (cangjie-* skills for documentation lookup)
 - Quick start guide
 - Workflow overview (new project vs. resume)
 
@@ -265,10 +279,11 @@ Manual workflow:
 ## Translation Loop
 For each batch (1-3 files):
   1. Read Java source files in current batch
-  2. Lookup Cangjie documentation:
-     - docs/cangjie/extra/ → basic types
-     - docs/cangjie/libs/std/ → standard library
-     - docs/cangjie/manual/ → language concepts
+  2. Lookup Cangjie documentation via skills:
+     - cangjie-std → standard library types and APIs
+     - cangjie-lang-features → language syntax and concepts
+     - cangjie-stdx → extended library (JSON, encoding, etc.)
+     - cangjie-original-docs → full documentation fallback
   3. Translate each file to Cangjie
   4. Write to <java_project>/j2cjgenerated/<package_path>/
   5. Compile: cd j2cjgenerated/<module> && cjpm build
@@ -328,11 +343,12 @@ Group by pattern (see error-patterns.md):
 - Generic type issue
 
 ### Step 3: Documentation Lookup (MANDATORY)
-Priority order:
-1. docs/cangjie/extra/ → basic types
-2. docs/cangjie/libs/std/<package>/ → standard library
-3. docs/cangjie/libs/std/<package>/*_samples/ → examples
-4. docs/cangjie/manual/ → language concepts
+Priority order (using Cangjie skills):
+1. cangjie-std → standard library types and APIs
+2. cangjie-lang-features → language syntax, generics, concurrency, error handling
+3. cangjie-stdx → extended library (JSON, encoding, configuration)
+4. cangjie-original-docs → full original documentation fallback
+5. error-patterns.md (in this skill's directory) → known error patterns
 
 ### Step 4: Fix One Error at a Time
 1. Fix single error
@@ -374,7 +390,16 @@ description: Use when generating translation reports or summarizing Java to Cang
 
 ## 5. Agents
 
-### 5.1 `translation-reviewer`
+### 5.1 `cangjie-engineer`
+
+**Location**: `agents/cangjie-engineer.md`
+
+General Cangjie development expert for writing, debugging, and building Cangjie code. Uses cangjie-* skills for documentation lookup (no web search, no memory mechanism).
+
+**Capabilities**: Full (write: true, edit: true, bash: true)
+**Use for**: Complex Cangjie code generation, debugging, and idiomatic code writing.
+
+### 5.2 `translation-reviewer`
 
 **Location**: `agents/translation-reviewer.md`
 
@@ -398,7 +423,7 @@ model: inherit
 - Missing translations
 - Type mapping accuracy
 
-### 5.2 `error-fixer`
+### 5.3 `error-fixer`
 
 **Location**: `agents/error-fixer.md`
 
@@ -422,6 +447,7 @@ model: inherit
 
 ### 6.0 package.json
 
+**Root `package.json`** (plugin entry point):
 ```json
 {
   "name": "java2cangjie-superpowers",
@@ -433,6 +459,15 @@ model: inherit
 }
 ```
 
+**`.opencode/package.json`** (plugin dependencies, auto-installed by OpenCode via `bun install`):
+```json
+{
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  }
+}
+```
+
 ### 6.1 Plugin Structure
 
 ```javascript
@@ -440,6 +475,7 @@ model: inherit
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { tool } from '@opencode-ai/plugin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -489,22 +525,57 @@ ${content}
       }
     },
 
-    // Register workflow control tools
-    // Note: OpenCode plugin tools use this format:
-    // { description: string, parameters: { [key]: { type, description } }, execute: async (params) => result }
+    // Register workflow control tools using official tool helper
+    // Uses @opencode-ai/plugin tool() for Zod schema validation
     // These are OpenCode-only. Claude Code falls back to skill-based manual workflow.
-    tools: {
-      analyze_project: { ... },
-      next_batch: { ... },
-      mark_complete: { ... },
-      mark_blocked: { ... },
-      translation_status: { ... }
+    tool: {
+      analyze_project: tool({
+        description: 'Analyze Java project structure, build dependency graph, return translation plan',
+        args: {
+          javaPath: tool.schema.string().describe('Path to Java source root'),
+          maxBatchSize: tool.schema.number().default(3).describe('Max files per batch')
+        },
+        async execute(args, context) { ... }
+      }),
+      next_batch: tool({ ... }),
+      mark_complete: tool({ ... }),
+      mark_blocked: tool({ ... }),
+      translation_status: tool({ ... })
     }
   };
 };
 ```
 
-### 6.2 Agent Tools Format
+### 6.2 Custom Tools Registration
+
+OpenCode plugin tools use the official `tool` helper from `@opencode-ai/plugin`:
+
+```javascript
+import { tool } from '@opencode-ai/plugin';
+
+// In plugin return object:
+tool: {
+  my_tool: tool({
+    description: 'Tool description',
+    args: {
+      param1: tool.schema.string().describe('Parameter description'),
+      param2: tool.schema.number().optional().describe('Optional parameter'),
+    },
+    async execute(args, context) {
+      const { directory, worktree } = context;
+      return { result: args.param1 };
+    }
+  })
+}
+```
+
+Key differences from raw format:
+- `tool` (singular) key in return object, not `tools` (plural)
+- Each tool wrapped with `tool()` helper
+- `args` with Zod schemas (`tool.schema.string()`, `tool.schema.number()`)
+- `execute` receives `(args, context)` not destructured params
+
+### 6.3 Agent Tools Format
 
 OpenCode agents specify tool permissions in frontmatter:
 
@@ -619,11 +690,14 @@ On Claude Code (no plugin tools), the skill instructions include the same logic 
 
 ### Phase 3: Cleanup + Documentation (0.5 day)
 
-- [ ] Delete old skills (analyze, test)
-- [ ] Delete `tools/j2cj/`, `scripts/`
-- [ ] Move `skills/java2cangjie-analyze/docs/` → `docs/cangjie/` (preserve all cangjie docs)
-- [ ] Update CLAUDE.md
-- [ ] Write README.md
+- [x] Delete old skills (analyze, test)
+- [x] Delete `tools/j2cj/`, `scripts/`
+- [x] Add 6 cangjie-* documentation skills (replacing java2cangjie-analyze/docs/)
+- [x] Add cangjie-engineer agent
+- [x] Update CLAUDE.md
+- [x] Write README.md
+- [x] Fix plugin tool format to use official `tool` helper from `@opencode-ai/plugin`
+- [x] Fix local plugin installation (auto-load from `.opencode/plugins/`)
 - **Verify**: Clean install in fresh environment
 
 **Total: 4 days**

@@ -19,10 +19,12 @@ Use plugin tools for deterministic workflow control:
 1. analyze_project(javaPath)        → dependency DAG + batch plan
 2. next_batch()                     → next files to translate
 3. translate batch via AI
-4. cjpm build                       → compile verification
+4. cjc -p src/... --output-type=staticlib  → compile verification (recommended)
 5. mark_complete() / mark_blocked() → track progress
 6. Repeat from step 2
 ```
+
+**Note**: Use `cjc -p` instead of `cjpm build` during translation to avoid cjpm's directory scanning limitation.
 
 ## Claude Code Environment (no plugin tools)
 
@@ -85,33 +87,96 @@ Key mapping rules:
 | `abstract class` | `abstract class` |
 | `T extends Comparable` | `T <: Comparable` |
 | `void` | `Unit` or omit return type |
+| `long` | `Int64` |
+| `int` | `Int` |
+| `byte` | `Byte` |
+| `byte[]` | `Array<Byte>` |
+| `boolean` | `Bool` |
+| `String` | `String` |
+| `float` | `Float32` |
+| `double` | `Float64` |
+| `char` | `Rune` |
+
+**IMPORTANT - Type Notes:**
+- `byte[]` in Java translates to `Array<Byte>` in Cangjie (not `Byte[]`)
+- Always initialize arrays: `Array<Byte>(0, { 0 })`
+- Use `Int64` for Java `long` to avoid overflow
 
 ### 4. Write Output
 
-Write Cangjie files preserving original package structure:
+**IMPORTANT - Directory Structure Differences:**
 
+Java Maven projects use `src/main/java/包名/`, but Cangjie projects require `src/包名/` directly under `src/`. 
+
+**Correct Cangjie structure:**
 ```
 <java_project>/j2cjgenerated/
 ├── <module>/
 │   ├── cjpm.toml
 │   └── src/
-│       └── <package_path>/
+│       └── <package_path>/    # Direct under src, NOT src/main/cj
 │           └── *.cj
 ```
+
+**Common mistakes to avoid:**
+- ❌ `src/main/cj/包名/` - This is Java Maven convention, not Cangjie
+- ✅ `src/包名/` - Correct Cangjie structure
 
 For Maven projects, create `cjpm.toml` per module:
 
 ```toml
 [package]
+cjc-version = "0.53.13"
 name = "<module-name>"
 version = "0.1.0"
+description = "Description"
+authors = ["Your Name <email@example.com>"]
+license = "Apache-2.0"
+output-type = "static"
 ```
 
+**Multi-level package names (e.g., `net.lingala.zip4j`):**
+- Keep the same package structure in Cangjie: `package net.lingala.zip4j`
+- File path: `src/net/lingala/zip4j/ClassName.cj`
+- cjpm.toml name should match the base module name (e.g., "zip4j")
+
 ### 5. Compile
+
+**Option 1: Use cjc (Recommended for translation)**
+
+```bash
+cd <java_project>/j2cjgenerated/<module> && cjc -p src/net/lingala/zip4j --output-type=staticlib 2>&1
+```
+
+**Option 2: Use cjpm build**
 
 ```bash
 cd <java_project>/j2cjgenerated/<module> && cjpm build 2>&1
 ```
+
+**IMPORTANT - cjpm build Limitations:**
+
+cjpm build has a known limitation: **it requires at least one .cj file directly in each directory to scan subdirectories.**
+
+If you see this warning:
+```
+Warning: there is no '.cj' file in directory './src', and its subdirectories will not be scanned
+```
+
+The subdirectories will not be compiled.
+
+**Workarounds:**
+1. **Preferred**: Use `cjc -p <package-path>` directly to compile specific package
+2. **If using cjpm**: Create a placeholder .cj file in each directory (not recommended for translation)
+
+**When to use each tool:**
+
+| Tool | Use Case | Notes |
+|-------|-----------|-------|
+| `cjc -p` | Translation workflow | Compile specific package, works without placeholder files |
+| `cjpm build` | Final project build | Requires proper directory structure with .cj files in each dir |
+
+**Recommendation for translation**: Use `cjc -p src/<package-path> --output-type=staticlib`
 
 ### 6. Track Progress
 
@@ -123,6 +188,21 @@ cd <java_project>/j2cjgenerated/<module> && cjpm build 2>&1
 - Load `java2cangjie-fix` skill to fix errors
 - If still failing after 3 retries, mark batch as blocked
 - Move to next available batch
+
+## Project Initialization
+
+For existing Java projects (not using `cjpm init`):
+
+1. Create the output directory structure:
+```bash
+mkdir -p <java_project>/j2cjgenerated/<module>/src
+```
+
+2. Create `cjpm.toml` with appropriate settings (see section 4)
+
+3. Create package directories under `src/` matching Java package structure
+
+**Note**: Do NOT use `cjpm init` for Java-to-Cangjie translation projects. It creates unnecessary files and expects a different structure.
 
 ## File Size Control
 
@@ -154,6 +234,27 @@ If a batch consistently fails:
 2. Try translating a simpler version first (e.g., remove generics, use Any)
 3. Mark as blocked and continue with other batches
 4. Document the failure reason in checkpoint
+
+## Project Cleanup
+
+Compilation generates temporary files and cache. Clean periodically:
+
+```bash
+cd <java_project>/j2cjgenerated/<module>
+
+# Clean build artifacts
+cjpm clean
+
+# Or manually clean
+rm -rf target/ .cached/
+```
+
+**Common directories to be aware of:**
+- `target/` - Build output directory
+- `target/release/` - Release artifacts
+- `.cached/` - Cangjie compiler cache
+- `*.a` - Generated static library files
+- `*.o` - Object files
 
 ## Next Steps
 

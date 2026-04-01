@@ -35,10 +35,9 @@ session_context="<EXTREMELY_IMPORTANT>\nYou have the Java to Cangjie translation
 # Claude Code hooks expect hookSpecificOutput.additionalContext.
 if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
   printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
-elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
 else
-  printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
+  # Claude Code format (works with both plugin-registered and settings.json hooks)
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
 fi
 
 exit 0
