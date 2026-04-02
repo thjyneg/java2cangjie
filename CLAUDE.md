@@ -4,112 +4,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Superpowers-based plugin for translating Java projects to Cangjie (仓颉) language using pure AI translation with incremental dependency-driven strategy. The plugin uses a hybrid control architecture: OpenCode plugin tools enforce workflow reliability, while Markdown skills guide AI translation quality.
+A dual-platform plugin for translating Java projects to Cangjie (仓颉) language using AI with incremental dependency-driven strategy. The plugin uses a hybrid control architecture: OpenCode plugin tools enforce workflow reliability, while Markdown skills guide AI translation quality.
 
-## Platform Support
+## Platform Architecture
 
-- **OpenCode**: Plugin tools + skills + bootstrap injection
-- **Claude Code**: Skills + hooks (no custom tools, manual workflow fallback)
+**OpenCode**: Plugin tools (`analyze_project`, `next_batch`, `compile_batch`, etc.) + skills + bootstrap injection via `experimental.chat.system.transform`
+**Claude Code**: `/j2c-translate` slash command + Python helper (`scripts/analyze_deps.py`) + hooks + skills
+
+Both platforms share the same skill files and agents. The OpenCode plugin (`.opencode/plugins/java2cangjie.js`) contains a JavaScript dependency analyzer; Claude Code uses a separate Python implementation (`scripts/analyze_deps.py`). Both produce equivalent DAG output.
 
 ## Key Commands
 
-### Cangjie Compilation and Testing
-
+### Cangjie Compilation
 ```bash
-cd <output_dir>
-cjpm build      # Compile Cangjie code
-cjpm test        # Run tests
+cd <output_dir>/<module> && cjpm build 2>&1   # Compile (preferred over cjc -p)
+cd <output_dir>/<module> && cjpm test           # Run tests
+cd <output_dir>/<module> && cjpm clean           # Clean build artifacts
 ```
 
-### Error Analysis
-
+### Dependency Analysis (Claude Code)
 ```bash
-# Compile and capture errors
-cd <output_dir> && cjpm build 2>&1
+python scripts/analyze_deps.py --java-path <path> [--output-dir <dir>] [--max-batch-size 3]
 ```
+
+### Test the Plugin
+```bash
+claude --plugin-dir D:/codes/java2cangjie   # Load plugin for testing
+```
+
+No automated test suite exists. Testing is manual (run translation on real Java projects, verify with `cjpm build`).
 
 ## Architecture
 
 ### Plugin Structure
-
 ```
-skills/                              # 10 skills (pure Markdown)
-├── using-java2cangjie/SKILL.md      # Bootstrap (injects system prompt)
-├── java2cangjie-translate/SKILL.md  # Translation guidance
-├── java2cangjie-fix/SKILL.md        # Error fixing workflow
-│   └── error-patterns.md            # Common error patterns reference
-├── java2cangjie-report/SKILL.md     # Report generation
-├── cangjie-lang-features/SKILL.md   # Cangjie language features
-├── cangjie-std/SKILL.md             # Standard library reference
-├── cangjie-stdx/SKILL.md            # Extended standard library
-├── cangjie-toolchains/SKILL.md      # Toolchain docs (cjc, cjpm, cjfmt...)
-├── cangjie-regulations/SKILL.md     # Coding conventions & best practices
-└── cangjie-original-docs/SKILL.md   # Full original documentation
-
-agents/                              # 3 agents
-├── cangjie-engineer.md              # General Cangjie development expert
-├── translation-reviewer.md          # Quality reviewer (read-only)
-└── error-fixer.md                   # Error fix executor
-
-.opencode/plugins/java2cangjie.js    # OpenCode plugin (tools + config + bootstrap)
-hooks/                               # Claude Code hooks
+.claude-plugin/plugin.json          # Claude Code manifest
+.opencode/plugins/java2cangjie.js   # OpenCode plugin (tools + config + bootstrap)
+commands/j2c-translate.md           # Claude Code slash command
+scripts/analyze_deps.py             # Dependency analysis (Python)
+hooks/                              # Claude Code SessionStart bootstrap injection
+skills/                             # 11 skills (see below)
+agents/                             # 3 agents
 ```
 
-### Translation Workflow
+### Skills (11 total)
 
-1. **Analyze** - Scan Java project, build dependency DAG, plan batches (1-3 files each)
+**Translation workflow** (4): `using-java2cangjie` (bootstrap), `java2cangjie-translate` (mapping rules reference), `java2cangjie-fix` (error patterns), `java2cangjie-report` (report generation), `j2c-translate` (workflow reference for command)
+
+**Cangjie documentation** (6): `cangjie-lang-features`, `cangjie-std`, `cangjie-stdx`, `cangjie-toolchains`, `cangjie-regulations`, `cangjie-original-docs`
+
+### Agents (3)
+- `cangjie-engineer` - General Cangjie development (full access)
+- `translation-reviewer` - Quality reviewer (read-only)
+- `error-fixer` - Error fix executor (write access)
+
+### Bootstrap Injection
+SessionStart hook reads `skills/using-java2cangjie/SKILL.md` and injects into system prompt. The polyglot `hooks/run-hook.cmd` handles cross-platform execution (Windows batch + Unix bash via heredoc trick).
+
+## Translation Workflow
+
+1. **Analyze** - Build dependency DAG, plan batches (1-3 files each)
 2. **Translate** - AI reads Java, looks up Cangjie docs, writes Cangjie code per batch
-3. **Compile** - `cjpm build` after each batch, mark complete or blocked
-4. **Fix** - If compilation fails: lookup docs, fix one error, recompile, retry (max 3)
-5. **Report** - Generate translation report with statistics
+3. **Compile** - `cjpm build` after EVERY batch (never skip)
+4. **Fix** - If compilation fails: lookup docs, fix, retry (max 3 attempts, then pause and ask user)
+5. **Report** - Generate translation report
 
-### Output Convention
+Translation order follows DAG from leaf nodes upward. State tracked in `<output_dir>/.java2cangjie_state.json`.
 
-All translated code goes to `<java_project>/j2cjgenerated/`, preserving original package structure.
+## Critical Translation Rules
 
-## Important Patterns
+### Keyword Collisions
+- `init` → rename to `initialize()` (Cangjie constructor keyword)
+- `type` → wrap in backticks `` `type` `` or rename
+- Other Cangjie keywords: `prop`, `redef`, `let`, `var`, `func`, `open`, `sealed`, `macro`, `spawn`
 
-### Incremental Dependency-Driven Translation
-
-Parse Java import statements to build a dependency DAG. Translate bottom-up:
-1. Start with leaf files (no internal dependencies)
-2. Only proceed to dependent files after current batch compiles
-3. Each batch: 1-3 files, always compile after translating
-
-### Compile-After-Every-Batch
-
-The translate step requires compiling after EVERY batch:
+### Inner Enums
+Must be extracted to top-level with compound names:
+```java
+class Foo { enum Bar { A, B } }  →  enum FooBar { A | B }
 ```
-Translate batch → cjpm build → (if error) → Fix → cjpm build → mark complete/blocked → Next batch
-```
-Never batch multiple translations without compiling between them.
 
-### Documentation Lookup Priority
+### Directory Structure
+- Java Maven: `src/main/java/com/example/`
+- Cangjie: `src/com/example/` (NO `main/java` or `main/cj`)
 
-For each translation or error, use the Cangjie skills:
+### InputStream.close()
+Cast to `Resource` first: `(stream as Resource).close()`
+
+### Type Mappings
+| Java | Cangjie |
+|------|---------|
+| `byte[]` | `Array<Byte>` (not `Byte[]`) |
+| `long` | `Int64` |
+| `int` | `Int` |
+| `byte` | `UInt8` |
+| `Optional<T>` | `Option<T>` |
+| `try/catch` | `try/except` |
+| `synchronized` | `std.sync.Mutex` |
+
+### No Int() Constructor
+Use `Int64()` or `Int32()` for string-to-int conversion. There is no `Int()` constructor in Cangjie.
+
+## Output Convention
+
+All translated code goes to `<java_project>/j2cjgenerated/`, preserving original package structure. Each module has its own `cjpm.toml`.
+
+## Documentation Lookup Priority
+
 1. `cangjie-std` / `cangjie-lang-features` - Standard library and language features
 2. `cangjie-stdx` - Extended library (JSON, encoding, config)
 3. `cangjie-original-docs` - Full original documentation fallback
 4. `cangjie-toolchains` - Build tools (cjc, cjpm, cjfmt, cjlint)
 5. `cangjie-regulations` - Coding conventions and best practices
-
-## Common Java-to-Cangjie Mappings
-
-| Java | Cangjie |
-|------|---------|
-| `ArrayList<E>` | `std.collection.ArrayList<E>` |
-| `HashMap<K,V>` | `std.collection.HashMap<K,V>` |
-| `HashSet<E>` | `std.collection.HashSet<E>` |
-| `null` | `Option<T>.None` or `??` operator |
-| `Optional<T>` | `Option<T>` |
-| `try/catch` | `try/except` |
-| `synchronized` | `std.sync.Mutex` |
-| `instanceof` | `match` pattern matching |
-
-## Checkpoint System
-
-Translation progress is tracked in `<output_dir>/.java2cangjie_state.json` (OpenCode) or checkpoint files (Claude Code). Supports session resume for interrupted translations.
-
-## Design Document
-
-Full design spec: `docs/superpowers/specs/2026-03-31-java2cangjie-superpowers-design.md`
