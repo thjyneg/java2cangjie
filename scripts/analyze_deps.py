@@ -200,6 +200,7 @@ def topological_sort(java_files: List[Dict], dependencies: Dict) -> List[str]:
 def create_batches(
     java_files: List[Dict],
     sorted_classes: List[str],
+    dependencies: Dict[str, List[str]],
     max_batch_size: int = 3
 ) -> List[Dict]:
     """Create translation batches following dependency order."""
@@ -216,11 +217,10 @@ def create_batches(
         # Calculate dependencies (which previous batches this batch depends on)
         batch_deps = []
         for cls in batch_files:
-            file_info = file_map[cls]
-            for dep in dependencies[cls]:
+            for dep in dependencies.get(cls, []):
                 # Find which batch this dependency is in
-                for i, batch in enumerate(batches):
-                    if dep in [f['className'] for f in batch['files']]:
+                for i, prev_batch in enumerate(batches):
+                    if dep in [f['className'] for f in prev_batch['files']]:
                         dep_id = f"batch-{i + 1}"
                         if dep_id not in batch_deps:
                             batch_deps.append(dep_id)
@@ -372,7 +372,7 @@ def main():
     sorted_classes = topological_sort(java_files, dependencies)
 
     # Create batches
-    batches = create_batches(java_files, sorted_classes, args.max_batch_size)
+    batches = create_batches(java_files, sorted_classes, dependencies, args.max_batch_size)
 
     # Detect project type
     project_info = detect_project_type(str(java_paths[0]))

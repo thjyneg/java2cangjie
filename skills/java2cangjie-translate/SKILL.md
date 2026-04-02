@@ -1,6 +1,6 @@
 ---
 name: java2cangjie-translate
-description: "Use when translating Java source code to Cangjie (仓颉) language, starting a new Java-to-Cangjie translation project, resuming an interrupted translation, or converting Java files to Cangjie. Trigger on phrases like 'translate Java to Cangjie', 'port this Java project', 'convert Java code to 仓颉', or any Java-to-Cangjie migration task"
+description: "Detailed Java-to-Cangjie mapping rules and translation patterns. This skill is a reference for type conversions, keyword handling, API mappings, and directory structure conventions. Load this skill during translation batches for specific mapping guidance on individual Java-to-Cangjie file conversions."
 ---
 
 # Java to Cangjie Translation - Execute
