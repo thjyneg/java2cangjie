@@ -90,18 +90,90 @@ Key mapping rules:
 | `void` | `Unit` or omit return type |
 | `long` | `Int64` |
 | `int` | `Int` |
-| `byte` | `Byte` |
+| `byte` | `Byte` (actually `UInt8`) |
 | `byte[]` | `Array<Byte>` |
 | `boolean` | `Bool` |
 | `String` | `String` |
 | `float` | `Float32` |
 | `double` | `Float64` |
 | `char` | `Rune` |
+| `~value` (bitwise NOT) | `!value` |
+| `Thread.sleep(ms)` | `sleep(ms * 1000000)` (top-level func, nanoseconds) |
+| `str.isEmpty()` | `str.isEmpty()` (function call, not property) |
+| `new Byte(intVal)` | `UInt8(intVal)` |
+| `new Integer(str)` | `Int64(str)` or `Int32(str)` |
 
 **IMPORTANT - Type Notes:**
 - `byte[]` in Java translates to `Array<Byte>` in Cangjie (not `Byte[]`)
 - Always initialize arrays: `Array<Byte>(0, { 0 })`
 - Use `Int64` for Java `long` to avoid overflow
+- **There is no `Int()` constructor in Cangjie** — use `Int64()` or `Int32()` for string-to-int conversion
+- **`Byte` in Cangjie is `UInt8`** — `Byte()` constructor does NOT accept `Int64`, use `UInt8()` instead
+
+#### CRITICAL: Cangjie Keyword Escaping
+
+**`init` is a Cangjie constructor keyword.** Java methods/fields named `init` MUST be renamed:
+- Interface method `void init()` → `func initialize()` (or `func init$()`)
+- Override `@Override public void init()` → `open func initialize()`
+- All call sites `obj.init()` → `obj.initialize()`
+
+**`type` is a Cangjie keyword.** Fields/parameters named `type` MUST be escaped:
+- Field `private String type` → `` private var `type`: String ``
+- Parameter `void setType(String type)` → `` func setType(`type`: String) ``
+- Or rename to `kind`/`category` if backticks are undesirable
+
+**Other common Cangjie keywords that may collide with Java identifiers:**
+`prop`, `redef`, `let`, `var`, `func`, `enum`, `open`, `sealed`, `macro`, `spawn`, `foreign`, `resource`
+
+When a Java identifier collides with a Cangjie keyword, either:
+1. Wrap in backticks: `` `keyword` `` (preferred for fields/params)
+2. Rename to a synonym (preferred for methods, e.g., `init` → `initialize`)
+
+#### CRITICAL: Inner Enums Must Be Extracted
+
+Cangjie does NOT support enums nested inside classes. Java inner enums must be extracted to top-level:
+
+```java
+// Java:
+public class ProgressMonitor {
+    public enum State { READY, RUNNING, DONE }
+}
+```
+
+```cj
+// Cangjie: extract to top-level enum
+enum ProgressMonitorState {
+    READY
+    | RUNNING
+    | DONE
+}
+
+class ProgressMonitor {
+    var state: ProgressMonitorState = ProgressMonitorState.READY
+}
+```
+
+Rules:
+- Extract the enum to top level with a compound name (OuterClass + EnumName)
+- Replace all references from `OuterClass.EnumName` to `OuterClassEnumName`
+- This applies to ALL inner enums, not just the example above
+
+#### CRITICAL: InputStream.close() Requires Resource Cast
+
+`close()` is NOT a method of `InputStream` in Cangjie — it belongs to the `Resource` interface:
+
+```cj
+// WRONG:
+let stream = FileInputStream("file.txt")
+stream.close()  // error: close not found on InputStream
+
+// CORRECT:
+import std.fs.{FileInputStream, Resource}
+let stream = FileInputStream("file.txt")
+(stream as Resource).close()
+```
+
+For try-with-resources patterns, prefer using `try` block with explicit `(stream as Resource).close()` in finally.
 
 ### 4. Write Output
 

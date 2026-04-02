@@ -421,20 +421,79 @@ ${toolMapping}
               return result({ error: `Batch ${batchId} status is '${batch.status}', not 'in_progress'. Call next_batch() first to start a batch.` });
             }
 
-            // Run cjpm build in the output directory
+            // Find module directory (where cjpm.toml exists)
+            const outputDir = currentState.outputDir;
+            let moduleDir = null;
+
+            const findCjpmToml = (dir, depth) => {
+              if (depth > 3) return null;
+              try {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                  if (entry.name === 'cjpm.toml') return dir;
+                }
+                for (const entry of entries) {
+                  if (entry.isDirectory()) {
+                    const found = findCjpmToml(path.join(dir, entry.name), depth + 1);
+                    if (found) return found;
+                  }
+                }
+              } catch (_) {}
+              return null;
+            };
+
+            moduleDir = findCjpmToml(outputDir, 0);
+
+            if (!moduleDir) {
+              batch.retries = (batch.retries || 0) + 1;
+              saveState(currentState.outputDir);
+              return result({
+                batchId,
+                compiled: false,
+                status: 'in_progress',
+                retries: batch.retries,
+                retriesLeft: 3 - batch.retries,
+                error: `No cjpm.toml found under ${outputDir}. Ensure the output project has been initialized with a cjpm.toml file.`,
+                message: `No cjpm.toml found. Create the Cangjie project structure first (cjpm.toml + src/ directory).`
+              });
+            }
+
+            // Ensure placeholder .cj files for cjpm directory scanning
+            const ensurePlaceholders = (baseDir, currentPath) => {
+              try {
+                const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+                const hasCjFile = entries.some(e => e.isFile() && e.name.endsWith('.cj'));
+                const subdirs = entries.filter(e => e.isDirectory() && e.name !== 'target' && e.name !== '.cached');
+                if (!hasCjFile && subdirs.length > 0) {
+                  const placeholderPath = path.join(currentPath, '_pkg.cj');
+                  if (!fs.existsSync(placeholderPath)) {
+                    fs.writeFileSync(placeholderPath, '// placeholder for cjpm directory scanning\n');
+                  }
+                }
+                for (const sub of subdirs) {
+                  ensurePlaceholders(baseDir, path.join(currentPath, sub.name));
+                }
+              } catch (_) {}
+            };
+            ensurePlaceholders(moduleDir, path.join(moduleDir, 'src'));
+
+            // Run cjpm build in the module directory
             const MAX_RETRIES = 3;
             let compileOutput = '';
             let compileSuccess = false;
+            let timedOut = false;
 
             try {
               compileOutput = execSync('cjpm build 2>&1', {
-                cwd: currentState.outputDir,
+                cwd: moduleDir,
                 encoding: 'utf8',
-                timeout: 120000,
+                timeout: 300000,
+                maxBuffer: 10 * 1024 * 1024,
                 stdio: ['pipe', 'pipe', 'pipe']
               });
               compileSuccess = true;
             } catch (e) {
+              timedOut = e.killed || (e.message && e.message.includes('ETIMEDOUT'));
               compileOutput = e.stdout || e.stderr || e.message || String(e);
               compileSuccess = false;
             }
@@ -461,6 +520,19 @@ ${toolMapping}
 
             // Compilation failed
             batch.retries = (batch.retries || 0) + 1;
+
+            if (timedOut) {
+              // Timeout — don't count against retry limit, suggest manual compile
+              batch.retries -= 1; // undo the increment
+              saveState(currentState.outputDir);
+              return result({
+                batchId,
+                compiled: false,
+                status: 'in_progress',
+                error: `cjpm build timed out (300s). This usually means too many errors or a slow build.`,
+                message: `TIMEOUT: cjpm build timed out. Try running "cd ${moduleDir} && cjpm build 2>&1" manually, then use mark_complete("${batchId}") if it succeeds, or fix errors and retry compile_batch.`
+              });
+            }
 
             if (batch.retries >= MAX_RETRIES) {
               // Auto-block after max retries
