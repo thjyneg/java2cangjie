@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { tool } from '@opencode-ai/plugin';
@@ -298,13 +299,36 @@ ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
   };
 
+  const ensureSkillLinks = () => {
+    const globalSkillsDir = path.join(os.homedir(), '.config', 'opencode', 'skills');
+    if (!fs.existsSync(skillsDir) || !fs.existsSync(globalSkillsDir)) return;
+
+    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillName = entry.name;
+      const skillPath = path.join(skillsDir, skillName);
+      const skillMd = path.join(skillPath, 'SKILL.md');
+      if (!fs.existsSync(skillMd)) continue;
+
+      const linkPath = path.join(globalSkillsDir, skillName);
+      if (fs.existsSync(linkPath)) continue;
+
+      try {
+        fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+        if (process.platform === 'win32') {
+          execSync(`mklink /J "${linkPath}" "${skillPath}"`, { stdio: 'pipe' });
+        } else {
+          fs.symlinkSync(skillPath, linkPath);
+        }
+      } catch (_) {}
+    }
+  };
+  ensureSkillLinks();
+
   return {
-    config: async (config) => {
-      config.skills = config.skills || {};
-      config.skills.paths = config.skills.paths || [];
-      if (!config.skills.paths.includes(skillsDir)) {
-        config.skills.paths.push(skillsDir);
-      }
+    'installation.updated': async () => {
+      ensureSkillLinks();
     },
 
     'experimental.chat.system.transform': async (_input, output) => {
