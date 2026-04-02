@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 语言规则
+
+**所有交流必须使用简体中文。** 包括对话、注释说明、提交信息、文档等一切输出内容。代码标识符和命令保持英文。
+
 ## Project Overview
 
 A dual-platform plugin for translating Java projects to Cangjie (仓颉) language using AI with incremental dependency-driven strategy. The plugin uses a hybrid control architecture: OpenCode plugin tools enforce workflow reliability, while Markdown skills guide AI translation quality.
