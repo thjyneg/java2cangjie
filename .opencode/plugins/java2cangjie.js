@@ -40,9 +40,10 @@ const extractAndStripFrontmatter = (content) => {
 // ============================================================
 
 const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
+  const javaRoots = Array.isArray(javaRoot) ? javaRoot : [javaRoot];
   const javaFiles = [];
-  const fileMap = new Map(); // className -> { path, packageName }
-  const packageToClasses = new Map(); // packageName -> [className]
+  const fileMap = new Map();
+  const packageToClasses = new Map();
 
   const scanDir = (dir, pkg = '') => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -58,10 +59,14 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
     }
   };
 
-  if (!fs.existsSync(javaRoot)) {
-    return { error: `Java source directory not found: ${javaRoot}` };
+  for (const root of javaRoots) {
+    if (!fs.existsSync(root)) continue;
+    scanDir(root);
   }
-  scanDir(javaRoot);
+
+  if (javaFiles.length === 0) {
+    return { error: `No Java files found in: ${javaRoots.join(', ')}` };
+  }
 
   // First pass: detect package for each class
   for (const file of javaFiles) {
@@ -147,7 +152,7 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
     file.deps = [...depSet];
   }
 
-  // Topological sort (Kahn's algorithm)
+  // Topological sort (Kahn's algorithm) with cycle handling
   const inDegree = new Map();
   const adjList = new Map();
   for (const file of javaFiles) {
@@ -174,6 +179,18 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
     for (const neighbor of adjList.get(cls)) {
       inDegree.set(neighbor, inDegree.get(neighbor) - 1);
       if (inDegree.get(neighbor) === 0) queue.push(neighbor);
+    }
+  }
+
+  // Handle remaining nodes in dependency cycles: force-add them
+  // sorted only contains cycle-free nodes; remaining have circular deps
+  if (sorted.length < javaFiles.length) {
+    const sortedSet = new Set(sorted);
+    const remaining = javaFiles
+      .filter(f => !sortedSet.has(f.className))
+      .sort((a, b) => (inDegree.get(a.className) || 0) - (inDegree.get(b.className) || 0));
+    for (const file of remaining) {
+      sorted.push(file.className);
     }
   }
 
@@ -305,7 +322,7 @@ ${toolMapping}
       analyze_project: tool({
         description: 'Analyze Java project structure, build dependency graph, return translation batch plan',
         args: {
-          javaPath: tool.schema.string().describe('Path to Java source root directory'),
+          javaPath: tool.schema.union(tool.schema.string(), tool.schema.array(tool.schema.string())).describe('Path(s) to Java source root directory(ies). Can be a single path or array of paths.'),
           maxBatchSize: tool.schema.number().describe('Max files per batch (default: 3)'),
           outputDir: tool.schema.string().optional().describe('Output directory for translated files (default: <javaPath>/../j2cjgenerated/)'),
         },
@@ -313,7 +330,7 @@ ${toolMapping}
           try {
             const { javaPath } = args;
             const maxBatchSize = args.maxBatchSize || 3;
-            const outDir = args.outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
+            const outDir = args.outputDir || path.join(path.dirname(typeof javaPath === 'string' ? javaPath : javaPath[0]), 'j2cjgenerated');
             const analysis = analyzeJavaDependencies(javaPath, maxBatchSize);
             if (analysis.error) return result({ error: analysis.error });
 
@@ -489,11 +506,12 @@ ${toolMapping}
                 encoding: 'utf8',
                 timeout: 300000,
                 maxBuffer: 10 * 1024 * 1024,
+                shell: true,
                 stdio: ['pipe', 'pipe', 'pipe']
               });
               compileSuccess = true;
             } catch (e) {
-              timedOut = e.killed || (e.message && e.message.includes('ETIMEDOUT'));
+              timedOut = e.killed || (e.message && (e.message.includes('ETIMEDOUT') || e.message.includes('timed out')));
               compileOutput = e.stdout || e.stderr || e.message || String(e);
               compileSuccess = false;
             }
