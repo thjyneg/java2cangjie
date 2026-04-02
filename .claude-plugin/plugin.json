@@ -1,0 +1,12 @@
+{
+  "name": "java2cangjie",
+  "version": "3.3.0",
+  "description": "Java to Cangjie (仓颉) translation plugin with AI-powered translation and dependency-driven workflow",
+  "author": {
+    "name": "java2cangjie Team"
+  },
+  "homepage": "https://github.com/zanwang/java2cangjie",
+  "repository": "https://github.com/zanwang/java2cangjie",
+  "license": "Apache-2.0",
+  "keywords": ["java", "cangjie", "translation", "code-conversion", "仓颉"]
+}

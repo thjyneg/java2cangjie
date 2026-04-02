@@ -186,3 +186,95 @@ java2cangjie-superpowers/
 本项目包含以下组件：
 - Superpowers 插件代码：MIT
 - 仓颉语言文档：遵循其原始许可证
+
+---
+
+# Claude Code 版本
+
+## 安装 (Claude Code)
+
+### 前置要求
+
+- Claude Code 已安装
+- Cangjie 工具链已安装 (cjpm, cjc)
+- Python 3.8+ (用于依赖分析脚本)
+
+### 方式一：插件目录安装
+
+```bash
+# 克隆仓库
+git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2cangjie
+
+# 或使用 --plugin-dir 标志
+claude --plugin-dir /path/to/java2cangjie
+```
+
+### 验证安装
+
+在 Claude Code 中运行 `/help` 并检查：
+- `/j2c-translate` 命令
+- `java2cangjie` 系列技能 (translate, fix, report, using-*)
+- Cangjie 文档技能
+
+## 快速开始 (Claude Code)
+
+### 翻译 Java 项目
+
+```bash
+# 在项目目录中启动 Claude Code
+cd /path/to/java-project
+
+# 在 Claude Code 中：
+/j2c-translate --java-path ./src/main/java
+```
+
+### 恢复中断的翻译
+
+```bash
+/j2c-translate --java-path ./src/main/java --resume
+```
+
+### 自定义输出目录
+
+```bash
+/j2c-translate --java-path ./src/main/java --output-dir ./cj-output
+```
+
+### 调整批处理大小
+
+```bash
+/j2c-translate --java-path ./src/main/java --max-batch-size 2
+```
+
+## Claude Code 工作流
+
+1. **分析** - Python 脚本扫描 Java 文件，构建依赖 DAG，规划批处理
+2. **翻译** - AI 将 Java 翻译为 Cangjie（小批次，1-3 个文件）
+3. **编译** - 每批翻译后运行 `cjpm build`
+4. **修复** - 如果编译失败，查询 Cangjie 技能进行修复（最多 3 次尝试）
+5. **暂停并询问** - 3 次失败后暂停并询问用户如何继续
+6. **报告** - 完成后生成翻译统计
+
+## Claude Code 项目结构
+
+```
+java2cangjie/
+├── .claude-plugin/
+│   └── plugin.json              # Claude Code 清单
+├── commands/
+│   └── j2c-translate.md        # 主翻译命令
+├── scripts/
+│   └── analyze_deps.py         # 依赖分析脚本
+├── skills/                      # Cangjie 文档技能
+├── agents/                      # 已存在
+└── .opencode/                   # OpenCode 插件（保持原有）
+```
+
+## 错误处理 (Claude Code)
+
+当编译失败时：
+
+1. 加载 `java2cangjie-fix` 技能
+2. 查询相关 Cangjie 技能
+3. 应用修复并重试编译
+4. 3 次失败后：暂停并询问用户

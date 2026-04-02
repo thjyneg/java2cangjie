@@ -17,7 +17,25 @@ Pure AI translation system with incremental dependency-driven strategy. No exter
 - **java2cangjie-fix** - Use when fixing compilation errors in translated Cangjie code
 - **java2cangjie-report** - Use when generating translation reports
 
-## Available Plugin Tools (OpenCode only)
+## Claude Code Workflow (recommended)
+
+**Primary command:** Use `/j2c-translate` slash command for full translation workflow
+
+```
+/j2c-translate --java-path /path/to/java/src --output-dir ./j2cjgenerated --max-batch-size 3
+```
+
+This command:
+1. Runs `scripts/analyze_deps.py` for dependency analysis and batch planning
+2. Initializes output structure with `cjpm.toml`
+3. Guides through incremental translation following dependency DAG
+4. Manages state file (`/.java2cangjie_state.json`)
+5. Handles compilation errors with automated fix attempts
+6. Generates final report
+
+**Manual workflow:** Use `java2cangjie-translate` skill directly (slash command provides automation)
+
+## OpenCode Plugin Tools (OpenCode only)
 
 - `analyze_project(javaPath)` - Scan Java project, build dependency DAG, return batch plan
 - `next_batch()` - Get next batch of files ready for translation
@@ -35,12 +53,13 @@ Use when user requests:
 
 ## Quick Start
 
-For new translation projects:
-1. Invoke `java2cangjie-translate` skill to start translation
-2. The skill handles dependency analysis, batch planning, and incremental translation
+**For new translation projects (Claude Code):**
+1. Run `/j2c-translate --java-path <path>` command
+2. Follow the guided workflow through analysis, translation, and fixing
 
-For error fixing on existing translations:
-1. Invoke `java2cangjie-fix` skill directly
+**For error fixing on existing translations:**
+1. Run `cjpm build 2>&1` to capture errors
+2. Invoke `java2cangjie-fix` skill directly
 
 ## Key Resources
 
