@@ -1,6 +1,6 @@
 ---
 name: cangjie-std
-description: "提供仓颉语言标准库常用功能速查文档，包括类型转换/格式化字串/文件系统/IO流/标准输入输出/命令行参数处理/单元测试框架等"
+description: "This skill should be used when looking up Cangjie (仓颉) standard library APIs for collections, IO, filesystem, string operations, type conversions, unit testing, or command-line argument handling."
 ---
 
 请按需查询当前目录下的工具文档：

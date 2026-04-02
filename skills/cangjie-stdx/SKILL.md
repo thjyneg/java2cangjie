@@ -1,6 +1,6 @@
 ---
 name: cangjie-stdx
-description: "提供仓颉语言扩展标准库stdx常用功能速查文档，包括stdx配置构建/json编解码等"
+description: "This skill should be used when working with Cangjie (仓颉) extended standard library features including JSON encoding/decoding, configuration management, encoding utilities, or logging."
 ---
 
 请按需查询当前目录下的工具文档：

@@ -1,6 +1,6 @@
 ---
 name: using-java2cangjie
-description: Use when translating Java projects or source files to Cangjie language, fixing translation errors, or configuring Java to Cangjie translation environment
+description: "This skill should be used when the user first mentions Java-to-Cangjie translation, asks about available skills, or needs an overview of the translation system. Acts as the bootstrap skill that introduces all other translation and Cangjie skills."
 ---
 
 <SUBAGENT-STOP>

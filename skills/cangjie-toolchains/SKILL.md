@@ -1,6 +1,6 @@
 ---
 name: cangjie-toolchains
-description: "提供仓颉语言编译器cjc/调试器cjdb/覆盖率检测工具cjcov/代码格式化工具cjfmt/静态检查工具cjlint/性能分析工具cjprof的使用文档"
+description: "This skill should be used when using Cangjie (仓颉) toolchain tools: compiler cjc, debugger cjdb, coverage cjcov, formatter cjfmt, linter cjlint, or profiler cjprof. Provides usage documentation and options."
 ---
 
 请按需查询当前目录下的工具文档：

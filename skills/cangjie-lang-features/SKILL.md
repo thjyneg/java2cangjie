@@ -1,6 +1,6 @@
 ---
 name: cangjie-lang-features
-description: "提供仓颉编程语言核心特性优质文档，当使用仓颉语言做软件开发，或者回答用户关于仓颉语言的问题时，应优先使用此 Skill"
+description: "This skill should be used when writing, debugging, or translating code involving Cangjie (仓颉) language syntax, generics, concurrency, error handling, pattern matching, or other core language features. Provides comprehensive Cangjie language documentation."
 ---
 
 # 仓颉编程语言特性目录

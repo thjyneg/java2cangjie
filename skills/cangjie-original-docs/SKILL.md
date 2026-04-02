@@ -1,6 +1,6 @@
 ---
 name: cangjie-original-docs
-description: "当无法从其他Skills中获取有效的仓颉语言知识时，请引用此Skill，所在目录提供仓颉语言/标准库/扩展标准库/工具链的原始文档"
+description: "This skill should be used as a fallback when other Cangjie skills do not provide sufficient detail. Contains the full original Cangjie (仓颉) documentation covering language, standard library, extended library, and toolchain."
 ---
 
 # 仓颉原始文档检索

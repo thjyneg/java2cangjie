@@ -1,6 +1,6 @@
 ---
 name: cangjie-regulations
-description: "仓颉项目规范准则。包括项目结构规范、命名规范、格式化规范、错误处理规范、测试规范、并发规范、安全规范、文档规范、依赖管理规范、版本控制规范等最佳实践指导"
+description: "This skill should be used when setting up Cangjie (仓颉) project structure, defining naming conventions, formatting code, handling errors, writing tests, or following Cangjie coding best practices and regulations."
 ---
 
 # 仓颉项目规范准则
