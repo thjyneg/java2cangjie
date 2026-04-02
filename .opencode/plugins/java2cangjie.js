@@ -41,18 +41,19 @@ const extractAndStripFrontmatter = (content) => {
 
 const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
   const javaFiles = [];
-  const fileMap = new Map(); // className -> filePath
+  const fileMap = new Map(); // className -> { path, packageName }
+  const packageToClasses = new Map(); // packageName -> [className]
 
-  const scanDir = (dir) => {
+  const scanDir = (dir, pkg = '') => {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        scanDir(fullPath);
+        scanDir(fullPath, pkg ? `${pkg}.${entry.name}` : entry.name);
       } else if (entry.name.endsWith('.java')) {
         const className = entry.name.replace('.java', '');
         javaFiles.push({ path: fullPath, className, deps: [] });
-        fileMap.set(className, fullPath);
+        fileMap.set(className, { path: fullPath, packageName: '' });
       }
     }
   };
@@ -62,16 +63,88 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
   }
   scanDir(javaRoot);
 
-  // Parse imports to build dependency graph
+  // First pass: detect package for each class
   for (const file of javaFiles) {
     const content = fs.readFileSync(file.path, 'utf8');
-    const importLines = content.match(/^import\s+[\w.]+;/gm) || [];
-    for (const imp of importLines) {
-      const importedClass = imp.replace('import ', '').replace(';', '').split('.').pop();
-      if (fileMap.has(importedClass) && importedClass !== file.className) {
-        file.deps.push(importedClass);
+    const pkgMatch = content.match(/^package\s+([\w.]+)\s*;/m);
+    if (pkgMatch) {
+      const pkg = pkgMatch[1];
+      fileMap.get(file.className).packageName = pkg;
+      if (!packageToClasses.has(pkg)) {
+        packageToClasses.set(pkg, []);
+      }
+      packageToClasses.get(pkg).push(file.className);
+    }
+  }
+
+  // Second pass: build dependency graph
+  for (const file of javaFiles) {
+    const content = fs.readFileSync(file.path, 'utf8');
+    const normalized = content.replace(/\r\n/g, '\n');
+    const depSet = new Set();
+    const info = fileMap.get(file.className);
+
+    // 1. Parse regular imports: import x.y.Z; or import x.y.*;
+    const regularImports = normalized.match(/^import\s+(?!static\b)([\w.]+(?:\.\*)?)\s*;/gm) || [];
+    for (const imp of regularImports) {
+      const imported = imp.replace(/^import\s+/, '').replace(/\s*;$/, '').trim();
+      if (imported.endsWith('.*')) {
+        // Wildcard import: resolve all classes in that package
+        const pkg = imported.slice(0, -2);
+        const classes = packageToClasses.get(pkg) || [];
+        for (const cls of classes) {
+          if (cls !== file.className) depSet.add(cls);
+        }
+      } else {
+        const importedClass = imported.split('.').pop();
+        if (fileMap.has(importedClass) && importedClass !== file.className) {
+          depSet.add(importedClass);
+        }
       }
     }
+
+    // 2. Parse static imports: import static x.y.Z.method; or import static x.y.Z.*;
+    const staticImports = normalized.match(/^import\s+static\s+([\w.]+(?:\.\*)?)\s*;/gm) || [];
+    for (const imp of staticImports) {
+      const imported = imp.replace(/^import\s+static\s+/, '').replace(/\s*;$/, '').trim();
+      // static import: last segment is method/field, second-to-last is class
+      // e.g. import static net.lingala.zip4j.util.Zip4jUtil.convertCharArrayToByteArray
+      //   -> class = Zip4jUtil
+      // e.g. import static net.lingala.zip4j.util.InternalZipConstants.*
+      //   -> class = InternalZipConstants
+      const parts = imported.split('.');
+      if (imported.endsWith('.*')) {
+        // static wildcard: second-to-last is the class
+        const className = parts.length >= 2 ? parts[parts.length - 2] : null;
+        if (className && fileMap.has(className) && className !== file.className) {
+          depSet.add(className);
+        }
+      } else {
+        // static method/field: second-to-last is the class
+        const className = parts.length >= 2 ? parts[parts.length - 2] : null;
+        if (className && fileMap.has(className) && className !== file.className) {
+          depSet.add(className);
+        }
+      }
+    }
+
+    // 3. Detect same-package implicit dependencies
+    // Java classes in the same package can reference each other without imports
+    if (info.packageName && packageToClasses.has(info.packageName)) {
+      const samePkgClasses = packageToClasses.get(info.packageName);
+      for (const cls of samePkgClasses) {
+        if (cls !== file.className) {
+          // Check if this class name actually appears in the content
+          // Use word boundary to avoid partial matches
+          const regex = new RegExp('\\b' + cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+          if (regex.test(content)) {
+            depSet.add(cls);
+          }
+        }
+      }
+    }
+
+    file.deps = [...depSet];
   }
 
   // Topological sort (Kahn's algorithm)
