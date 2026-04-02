@@ -1,9 +1,20 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 import { tool } from '@opencode-ai/plugin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ============================================================
+// Helper: ensure tool execute returns string (required by OpenCode)
+// ============================================================
+
+const result = (data) => JSON.stringify(data, null, 2);
+
+// ============================================================
+// Frontmatter parser
+// ============================================================
 
 const extractAndStripFrontmatter = (content) => {
   // Normalize CRLF to LF for regex matching
@@ -176,7 +187,18 @@ export const Java2CangjiePlugin = async ({ client, directory }) => {
 - \`TodoWrite\` → \`todowrite\`
 - \`Skill\` tool → OpenCode's native \`skill\` tool
 - \`Read\`, \`Write\`, \`Edit\`, \`Bash\` → Your native tools
-- Plugin tools: \`analyze_project\`, \`next_batch\`, \`mark_complete\`, \`mark_blocked\`, \`translation_status\``;
+- Plugin tools: \`analyze_project\`, \`next_batch\`, \`compile_batch\`, \`mark_complete\`, \`mark_blocked\`, \`translation_status\`
+
+**MANDATORY Batch Workflow (enforced by tools):**
+1. \`analyze_project()\` → build dependency DAG + batches
+2. \`next_batch()\` → get next ready batch (BLOCKS if another is in_progress)
+3. Translate Java → Cangjie files
+4. \`compile_batch(batchId)\` → run \`cjpm build\`, auto-complete on success, return errors on failure
+5. If compile fails → fix errors → \`compile_batch(batchId)\` again (max 3 retries, then auto-blocked)
+6. Only after compile succeeds can you call \`next_batch()\` for the next batch
+7. Repeat until all batches done → generate report
+
+**NEVER:** skip compile_batch, call next_batch while a batch is in_progress, or use mark_complete without compiling.`;
 
     return `<EXTREMELY_IMPORTANT>
 You have the Java to Cangjie translation system.
@@ -211,25 +233,26 @@ ${toolMapping}
         description: 'Analyze Java project structure, build dependency graph, return translation batch plan',
         args: {
           javaPath: tool.schema.string().describe('Path to Java source root directory'),
-          maxBatchSize: tool.schema.number().default(3).describe('Max files per batch (default: 3)'),
+          maxBatchSize: tool.schema.number().describe('Max files per batch (default: 3)'),
           outputDir: tool.schema.string().optional().describe('Output directory for translated files (default: <javaPath>/../j2cjgenerated/)'),
         },
         async execute(args, context) {
           try {
-            const { javaPath, maxBatchSize, outputDir } = args;
-            const outDir = outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
-            const result = analyzeJavaDependencies(javaPath, maxBatchSize);
-            if (result.error) return result;
+            const { javaPath } = args;
+            const maxBatchSize = args.maxBatchSize || 3;
+            const outDir = args.outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
+            const analysis = analyzeJavaDependencies(javaPath, maxBatchSize);
+            if (analysis.error) return result({ error: analysis.error });
 
             currentState = {
               projectPath: javaPath,
               outputDir: outDir,
-              totalFiles: result.totalFiles,
+              totalFiles: analysis.totalFiles,
               batches: {},
-              dagSummary: result.dagSummary || '',
+              dagSummary: analysis.dagSummary || '',
               createdAt: new Date().toISOString()
             };
-            for (const batch of result.batches) {
+            for (const batch of analysis.batches) {
               currentState.batches[batch.id] = {
                 status: 'pending',
                 files: batch.files,
@@ -239,30 +262,45 @@ ${toolMapping}
             }
             saveState(outDir);
 
-            return {
-              totalFiles: result.totalFiles || 0,
-              totalBatches: result.batches.length || 0,
-              batches: result.batches.map(b => ({
+            return result({
+              totalFiles: analysis.totalFiles || 0,
+              totalBatches: analysis.batches.length || 0,
+              batches: analysis.batches.map(b => ({
                 id: b.id,
                 fileCount: b.files.length,
                 files: b.files.map(f => f.className),
                 dependencies: b.dependencies || []
               })),
-              dagSummary: result.dagSummary || '',
+              dagSummary: analysis.dagSummary || '',
               outputDir: outDir
-            };
+            });
           } catch (e) {
-            return { error: `analyze_project failed: ${e.message}` };
+            return result({ error: `analyze_project failed: ${e.message}` });
           }
         }
       }),
 
       next_batch: tool({
-        description: 'Get next batch of Java files ready for translation (all dependencies completed)',
+        description: 'Get next batch of Java files ready for translation. BLOCKS if a batch is currently in_progress — you must compile_batch() first to complete or block the current batch before getting the next one.',
         args: {},
         async execute(args, context) {
           try {
-            if (!currentState) return { error: 'No active project. Call analyze_project first.' };
+            if (!currentState) return result({ error: 'No active project. Call analyze_project first.' });
+
+            // GUARD: Enforce one-batch-at-a-time — must compile before advancing
+            const inProgress = Object.entries(currentState.batches).find(
+              ([id, b]) => b.status === 'in_progress'
+            );
+            if (inProgress) {
+              return result({
+                ready: false,
+                blocked: true,
+                message: `BLOCKED: Batch ${inProgress[0]} is still in_progress. You MUST call compile_batch("${inProgress[0]}") to compile and complete it before requesting the next batch.`,
+                currentBatch: inProgress[0],
+                retries: inProgress[1].retries || 0
+              });
+            }
+
             for (const [batchId, batch] of Object.entries(currentState.batches)) {
               if (batch.status !== 'pending') continue;
               const allDepsComplete = (batch.dependencies || []).every(
@@ -272,53 +310,146 @@ ${toolMapping}
                 batch.status = 'in_progress';
                 batch.startedAt = new Date().toISOString();
                 saveState(currentState.outputDir);
-                return {
+                return result({
                   batchId,
                   files: batch.files || [],
                   ready: true
-                };
+                });
               }
             }
             const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
             const blocked = Object.values(currentState.batches).filter(b => b.status === 'blocked').length;
             const pending = Object.values(currentState.batches).filter(b => b.status === 'pending').length;
-            return {
+            return result({
               ready: false,
               message: 'No batches available. All dependencies must be completed first.',
               progress: { completed, blocked, pending }
-            };
+            });
           } catch (e) {
-            return { error: `next_batch failed: ${e.message}` };
+            return result({ error: `next_batch failed: ${e.message}` });
+          }
+        }
+      }),
+
+      compile_batch: tool({
+        description: 'Compile the output project with cjpm build for the given batch. On success, automatically marks the batch as completed. On failure, returns compile errors for fixing. After 3 failed attempts, automatically marks the batch as blocked. This is the REQUIRED way to advance batches — do NOT call mark_complete without compiling first.',
+        args: {
+          batchId: tool.schema.string().describe('Batch identifier to compile'),
+          outputFiles: tool.schema.array(tool.schema.string()).optional().describe('Generated Cangjie file paths from this batch'),
+        },
+        async execute(args, context) {
+          try {
+            const { batchId } = args;
+            const outputFiles = args.outputFiles || [];
+            if (!currentState) return result({ error: 'No active project. Call analyze_project first.' });
+            const batch = currentState.batches[batchId];
+            if (!batch) return result({ error: `Batch ${batchId} not found.` });
+            if (batch.status !== 'in_progress') {
+              return result({ error: `Batch ${batchId} status is '${batch.status}', not 'in_progress'. Call next_batch() first to start a batch.` });
+            }
+
+            // Run cjpm build in the output directory
+            const MAX_RETRIES = 3;
+            let compileOutput = '';
+            let compileSuccess = false;
+
+            try {
+              compileOutput = execSync('cjpm build 2>&1', {
+                cwd: currentState.outputDir,
+                encoding: 'utf8',
+                timeout: 120000,
+                stdio: ['pipe', 'pipe', 'pipe']
+              });
+              compileSuccess = true;
+            } catch (e) {
+              compileOutput = e.stdout || e.stderr || e.message || String(e);
+              compileSuccess = false;
+            }
+
+            if (compileSuccess) {
+              // Auto-mark as completed
+              batch.status = 'completed';
+              batch.outputFiles = outputFiles;
+              batch.completedAt = new Date().toISOString();
+              batch.compileOutput = compileOutput.trim();
+              saveState(currentState.outputDir);
+
+              const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
+              const total = Object.keys(currentState.batches).length;
+              return result({
+                batchId,
+                compiled: true,
+                status: 'completed',
+                progress: `${completed}/${total} batches done (${currentState.totalFiles} files)`,
+                allComplete: completed === total,
+                output: compileOutput.trim()
+              });
+            }
+
+            // Compilation failed
+            batch.retries = (batch.retries || 0) + 1;
+
+            if (batch.retries >= MAX_RETRIES) {
+              // Auto-block after max retries
+              batch.status = 'blocked';
+              batch.blockReason = `Compilation failed after ${MAX_RETRIES} attempts. Last error:\n${compileOutput.trim().slice(0, 2000)}`;
+              batch.blockedAt = new Date().toISOString();
+              saveState(currentState.outputDir);
+
+              return result({
+                batchId,
+                compiled: false,
+                status: 'blocked',
+                retries: batch.retries,
+                error: compileOutput.trim(),
+                message: `BLOCKED: Compilation failed ${MAX_RETRIES} times. Batch marked as blocked. Use java2cangjie-fix skill to resolve manually.`
+              });
+            }
+
+            // Still has retries left — keep in_progress
+            saveState(currentState.outputDir);
+            return result({
+              batchId,
+              compiled: false,
+              status: 'in_progress',
+              retries: batch.retries,
+              retriesLeft: MAX_RETRIES - batch.retries,
+              error: compileOutput.trim(),
+              message: `Compilation failed (attempt ${batch.retries}/${MAX_RETRIES}). Fix the errors above, then call compile_batch("${batchId}") again.`
+            });
+          } catch (e) {
+            return result({ error: `compile_batch failed: ${e.message}` });
           }
         }
       }),
 
       mark_complete: tool({
-        description: 'Mark a translation batch as complete (compilation passed)',
+        description: 'Manual override: mark a batch as completed. Prefer using compile_batch() instead, which compiles and auto-marks on success. Use this ONLY when you have already verified compilation externally.',
         args: {
           batchId: tool.schema.string().describe('Batch identifier'),
           outputFiles: tool.schema.array(tool.schema.string()).optional().describe('Generated Cangjie file paths'),
         },
         async execute(args, context) {
           try {
-            const { batchId, outputFiles } = args;
+            const { batchId } = args;
+            const outputFiles = args.outputFiles || [];
             if (!currentState || !currentState.batches[batchId]) {
-              return { error: `Batch ${batchId} not found` };
+              return result({ error: `Batch ${batchId} not found` });
             }
             currentState.batches[batchId].status = 'completed';
-            currentState.batches[batchId].outputFiles = outputFiles || [];
+            currentState.batches[batchId].outputFiles = outputFiles;
             currentState.batches[batchId].completedAt = new Date().toISOString();
             saveState(currentState.outputDir);
 
             const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
-            return {
+            return result({
               batchId,
               status: 'completed',
               progress: `${completed}/${currentState.totalFiles} files done`,
               allComplete: completed === Object.keys(currentState.batches).length
-            };
+            });
           } catch (e) {
-            return { error: `mark_complete failed: ${e.message}` };
+            return result({ error: `mark_complete failed: ${e.message}` });
           }
         }
       }),
@@ -333,7 +464,7 @@ ${toolMapping}
           try {
             const { batchId, reason } = args;
             if (!currentState || !currentState.batches[batchId]) {
-              return { error: `Batch ${batchId} not found` };
+              return result({ error: `Batch ${batchId} not found` });
             }
             currentState.batches[batchId].status = 'blocked';
             currentState.batches[batchId].blockReason = reason;
@@ -345,15 +476,15 @@ ${toolMapping}
               return (b.dependencies || []).every(depId => currentState.batches[depId]?.status === 'completed');
             });
 
-            return {
+            return result({
               batchId,
               status: 'blocked',
               reason,
               canProceed: available.length > 0,
               availableBatches: available.map(([id]) => id)
-            };
+            });
           } catch (e) {
-            return { error: `mark_blocked failed: ${e.message}` };
+            return result({ error: `mark_blocked failed: ${e.message}` });
           }
         }
       }),
@@ -363,9 +494,9 @@ ${toolMapping}
         args: {},
         async execute(args, context) {
           try {
-            if (!currentState) return { error: 'No active project. Call analyze_project first.' };
+            if (!currentState) return result({ error: 'No active project. Call analyze_project first.' });
             const batches = Object.values(currentState.batches);
-            return {
+            return result({
               projectPath: currentState.projectPath,
               outputDir: currentState.outputDir,
               totalFiles: currentState.totalFiles || 0,
@@ -378,9 +509,9 @@ ${toolMapping}
                 id: Object.entries(currentState.batches).find(([_, v]) => v === b)?.[0],
                 reason: b.blockReason || ''
               }))
-            };
+            });
           } catch (e) {
-            return { error: `translation_status failed: ${e.message}` };
+            return result({ error: `translation_status failed: ${e.message}` });
           }
         }
       })
