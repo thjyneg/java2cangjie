@@ -1,6 +1,6 @@
 ---
 name: java2cangjie-report
-description: Use when generating translation reports, summarizing translation results, or documenting Java to Cangjie translation outcomes
+description: "Use when generating translation reports, summarizing Java to Cangjie translation results, documenting translation outcomes, or when translation is complete and a summary is needed. Trigger on 'generate translation report', 'translation summary', 'show translation results', or when all batches are done"
 ---
 
 # Java to Cangjie Translation - Report
@@ -46,11 +46,9 @@ Report:
 
 ### 3. Error Breakdown
 
-Read from state/checkpoint:
+Read from state file:
 ```bash
 cat <output_dir>/.java2cangjie_state.json
-# or
-cat <output_dir>/.java2cangjie_checkpoint.md
 ```
 
 Report:

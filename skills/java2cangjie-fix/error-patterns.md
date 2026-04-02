@@ -22,7 +22,7 @@ import std.collection.HashMap
 import std.collection.HashSet
 ```
 
-**Docs:** `docs/extra/ArrayList.md`, `docs/extra/HashMap.md`, `docs/extra/HashSet.md`
+**Docs:** See `cangjie-std` skill → collections; or `cangjie-lang-features` skill → collections
 
 ### 1.2 IO Types Not Found
 
@@ -38,7 +38,7 @@ import std.fs.File
 import std.io.BufferedStream
 ```
 
-**Docs:** `docs/libs/std/fs/`, `docs/libs/std/io/`
+**Docs:** See `cangjie-std` skill → fs / io sections
 
 ## 2. Type Mismatch Errors
 
@@ -64,7 +64,7 @@ match (result) {
 }
 ```
 
-**Docs:** `docs/extra/Option.md`
+**Docs:** See `cangjie-lang-features` skill → Option 类型
 
 ### 2.2 Generic Type Mismatch
 
@@ -81,7 +81,7 @@ error: Generic parameter mismatch
 // Cangjie: <T <: Comparable<T>>
 ```
 
-**Docs:** `docs/manual/` (generics section)
+**Docs:** See `cangjie-lang-features` skill → 泛型/generic
 
 ## 3. Method Not Found Errors
 
@@ -120,7 +120,7 @@ str[start..end]  // or str.subString(start, end - start)
 "${name} ${age}"
 ```
 
-**Docs:** `docs/extra/String.md`
+**Docs:** See `cangjie-lang-features` skill → 字符串/String
 
 ### 3.3 Collection Methods
 
@@ -143,7 +143,7 @@ map.get(key)  // returns Option<V>
 map.getOrDefault(key, defaultValue)
 ```
 
-**Docs:** `docs/extra/Collection.md`
+**Docs:** See `cangjie-std` skill → collections; `cangjie-lang-features` skill → collections
 
 ## 4. Syntax Errors
 

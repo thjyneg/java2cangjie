@@ -1,6 +1,6 @@
 ---
 name: java2cangjie-translate
-description: Use when translating Java source code to Cangjie language, starting a new translation project, or resuming an interrupted translation
+description: "Use when translating Java source code to Cangjie (仓颉) language, starting a new Java-to-Cangjie translation project, resuming an interrupted translation, or converting Java files to Cangjie. Trigger on phrases like 'translate Java to Cangjie', 'port this Java project', 'convert Java code to 仓颉', or any Java-to-Cangjie migration task"
 ---
 
 # Java to Cangjie Translation - Execute
@@ -19,12 +19,12 @@ Use plugin tools for deterministic workflow control:
 1. analyze_project(javaPath)        → dependency DAG + batch plan
 2. next_batch()                     → next files to translate
 3. translate batch via AI
-4. cjc -p src/... --output-type=staticlib  → compile verification (recommended)
-5. mark_complete() / mark_blocked() → track progress
+4. compile_batch(batchId)           → compile via cjpm build, auto-complete on success
+5. If compile fails → fix errors → compile_batch(batchId) again (max 3 retries)
 6. Repeat from step 2
 ```
 
-**Note**: Use `cjc -p` instead of `cjpm build` during translation to avoid cjpm's directory scanning limitation.
+**Note**: The `compile_batch` tool runs `cjpm build` internally and auto-manages batch status. Do NOT call `mark_complete` without compiling first.
 
 ## Claude Code Environment (no plugin tools)
 
@@ -40,8 +40,9 @@ grep -rn "^import " <java_dir> --include="*.java" | grep -v "java\.\|javax\.\|or
 # Step 3: Identify leaf files (no internal dependencies)
 # Files whose imports don't reference other project classes = leaf nodes
 
-# Step 4: Track progress in checkpoint file
-# Use templates/checkpoint.md format
+# Step 4: Track progress in state file
+# Save to <output_dir>/.java2cangjie_state.json
+# Format: { batches: { "batch-N": { status, files, retries } }, totalFiles, outputDir }
 ```
 
 ## Translation Loop
@@ -142,41 +143,33 @@ output-type = "static"
 
 ### 5. Compile
 
-**Option 1: Use cjc (Recommended for translation)**
+**OpenCode (with plugin tools):**
 
-```bash
-cd <java_project>/j2cjgenerated/<module> && cjc -p src/net/lingala/zip4j --output-type=staticlib 2>&1
-```
+Use `compile_batch(batchId)` — it handles compilation and batch status automatically.
 
-**Option 2: Use cjpm build**
+**Claude Code (manual):**
 
 ```bash
 cd <java_project>/j2cjgenerated/<module> && cjpm build 2>&1
 ```
 
-**IMPORTANT - cjpm build Limitations:**
+`cjpm build` automatically handles dependency resolution and package linking. Prefer it over `cjc -p` which requires manually specifying dependency information.
 
-cjpm build has a known limitation: **it requires at least one .cj file directly in each directory to scan subdirectories.**
+**NOTE - cjpm build directory scanning:**
 
-If you see this warning:
+cjpm build requires at least one `.cj` file directly in each directory to scan subdirectories. If you see:
 ```
 Warning: there is no '.cj' file in directory './src', and its subdirectories will not be scanned
 ```
-
-The subdirectories will not be compiled.
-
-**Workarounds:**
-1. **Preferred**: Use `cjc -p <package-path>` directly to compile specific package
-2. **If using cjpm**: Create a placeholder .cj file in each directory (not recommended for translation)
+Create a placeholder `.cj` file (e.g., `emptyp.cj`) in the directory.
 
 **When to use each tool:**
 
 | Tool | Use Case | Notes |
 |-------|-----------|-------|
-| `cjc -p` | Translation workflow | Compile specific package, works without placeholder files |
-| `cjpm build` | Final project build | Requires proper directory structure with .cj files in each dir |
-
-**Recommendation for translation**: Use `cjc -p src/<package-path> --output-type=staticlib`
+| `compile_batch()` | OpenCode translation workflow | Plugin runs `cjpm build` internally, auto-manages status |
+| `cjpm build` | Claude Code translation workflow | Auto-handles dependencies, standard approach |
+| `cjc -p` | Single-package quick check only | No dependency resolution, use only for isolated packages |
 
 ### 6. Track Progress
 
@@ -214,7 +207,7 @@ mkdir -p <java_project>/j2cjgenerated/<module>/src
 
 - Read relevant docs BEFORE translating each batch, not during
 - Focus on one file at a time within a batch
-- Use checkpoint/state to resume if context fills
+- Use state file to resume if context fills
 - If context is getting low (>80% used), save progress and suggest resuming
 
 ## Session Resumption
@@ -222,10 +215,9 @@ mkdir -p <java_project>/j2cjgenerated/<module>/src
 When resuming an interrupted translation:
 
 1. Check for state file: `<output_dir>/.java2cangjie_state.json`
-2. Or check checkpoint: `<output_dir>/.java2cangjie_checkpoint.md`
-3. Determine which batches are completed/in-progress/pending
-4. Call `translation_status()` (OpenCode) or read checkpoint (Claude Code)
-5. Continue from first non-completed batch
+2. Determine which batches are completed/in-progress/pending
+3. Call `translation_status()` (OpenCode) or read state file (Claude Code)
+4. Continue from first non-completed batch
 
 ## Error Handling
 
@@ -233,7 +225,7 @@ If a batch consistently fails:
 1. Try splitting the batch into individual files
 2. Try translating a simpler version first (e.g., remove generics, use Any)
 3. Mark as blocked and continue with other batches
-4. Document the failure reason in checkpoint
+4. Document the failure reason in state file
 
 ## Project Cleanup
 

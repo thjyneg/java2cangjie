@@ -1,6 +1,6 @@
 ---
 name: java2cangjie-fix
-description: Use when fixing compilation errors in translated Cangjie code, analyzing error patterns, or looking up Cangjie API documentation for error resolution
+description: "Use when fixing compilation errors in translated Cangjie (仓颉) code, analyzing cjpm build errors, resolving Cangjie API mismatches, or looking up documentation for error resolution. Trigger on 'Cangjie compile error', 'cjpm build failed', '仓颉编译失败', or any Cangjie compilation error fixing task"
 ---
 
 # Java to Cangjie Translation - Fix Errors
@@ -12,6 +12,14 @@ Systematic error fixing using dependency-aware, one-at-a-time methodology. Every
 ## Error Analysis Process
 
 ### Step 1: Capture Errors
+
+**OpenCode (with plugin tools):**
+
+```bash
+# Use compile_batch(batchId) which runs cjpm build internally
+```
+
+**Claude Code (manual):**
 
 ```bash
 cd <output_dir> && cjpm build 2>&1
@@ -50,7 +58,7 @@ Determine fix order based on file dependencies:
 
 ```bash
 # Find import dependencies
-Grep: pattern="^import " path="<output_dir>" glob="*.cj"
+grep -rn "^import " <output_dir> --include="*.cj"
 ```
 
 Fix bottom-up: dependencies before dependents. Files with no dependencies first.
@@ -62,7 +70,7 @@ For each error:
 1. **Read the error** - Understand what failed and where
 2. **Lookup documentation** - Find the correct Cangjie API/syntax
 3. **Apply minimal fix** - Change only what's needed
-4. **Compile immediately** - `cd <output_dir> && cjpm build 2>&1`
+4. **Compile immediately** - `cd <output_dir> && cjpm build 2>&1` (Claude Code) or `compile_batch(batchId)` (OpenCode)
 5. **Verify** - Check if the specific error is resolved
 6. **If compilation fails**: revert with `git checkout -- <file>` if new errors introduced
 7. **Max 3 retries** per error, then report as BLOCKED
@@ -159,4 +167,4 @@ See `error-patterns.md` in this directory for the complete pattern catalog.
 ## Next Steps
 
 - If all errors fixed → invoke `java2cangjie-report` skill
-- If blocked → document remaining errors in checkpoint, suggest manual review
+- If blocked → document remaining errors in `<output_dir>/.java2cangjie_state.json`, suggest manual review
