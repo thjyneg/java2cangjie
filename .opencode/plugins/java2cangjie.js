@@ -6,8 +6,10 @@ import { tool } from '@opencode-ai/plugin';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const extractAndStripFrontmatter = (content) => {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, content };
+  // Normalize CRLF to LF for regex matching
+  const normalized = content.replace(/\r\n/g, '\n');
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, content: normalized };
   const frontmatterStr = match[1];
   const body = match[2];
   const frontmatter = {};
@@ -194,9 +196,13 @@ ${toolMapping}
     },
 
     'experimental.chat.system.transform': async (_input, output) => {
-      const bootstrap = getBootstrapContent();
-      if (bootstrap) {
-        (output.system ||= []).push(bootstrap);
+      try {
+        const bootstrap = getBootstrapContent();
+        if (typeof bootstrap === 'string' && bootstrap.length > 0) {
+          (output.system ||= []).push(bootstrap);
+        }
+      } catch (e) {
+        // Silently fail — never push undefined/non-string into output.system
       }
     },
 
@@ -209,41 +215,45 @@ ${toolMapping}
           outputDir: tool.schema.string().optional().describe('Output directory for translated files (default: <javaPath>/../j2cjgenerated/)'),
         },
         async execute(args, context) {
-          const { javaPath, maxBatchSize, outputDir } = args;
-          const outDir = outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
-          const result = analyzeJavaDependencies(javaPath, maxBatchSize);
-          if (result.error) return result;
+          try {
+            const { javaPath, maxBatchSize, outputDir } = args;
+            const outDir = outputDir || path.join(path.dirname(javaPath), 'j2cjgenerated');
+            const result = analyzeJavaDependencies(javaPath, maxBatchSize);
+            if (result.error) return result;
 
-          currentState = {
-            projectPath: javaPath,
-            outputDir: outDir,
-            totalFiles: result.totalFiles,
-            batches: {},
-            dagSummary: result.dagSummary,
-            createdAt: new Date().toISOString()
-          };
-          for (const batch of result.batches) {
-            currentState.batches[batch.id] = {
-              status: 'pending',
-              files: batch.files,
-              dependencies: batch.dependencies,
-              retries: 0
+            currentState = {
+              projectPath: javaPath,
+              outputDir: outDir,
+              totalFiles: result.totalFiles,
+              batches: {},
+              dagSummary: result.dagSummary || '',
+              createdAt: new Date().toISOString()
             };
-          }
-          saveState(outDir);
+            for (const batch of result.batches) {
+              currentState.batches[batch.id] = {
+                status: 'pending',
+                files: batch.files,
+                dependencies: batch.dependencies,
+                retries: 0
+              };
+            }
+            saveState(outDir);
 
-          return {
-            totalFiles: result.totalFiles,
-            totalBatches: result.batches.length,
-            batches: result.batches.map(b => ({
-              id: b.id,
-              fileCount: b.files.length,
-              files: b.files.map(f => f.className),
-              dependencies: b.dependencies
-            })),
-            dagSummary: result.dagSummary,
-            outputDir: outDir
-          };
+            return {
+              totalFiles: result.totalFiles || 0,
+              totalBatches: result.batches.length || 0,
+              batches: result.batches.map(b => ({
+                id: b.id,
+                fileCount: b.files.length,
+                files: b.files.map(f => f.className),
+                dependencies: b.dependencies || []
+              })),
+              dagSummary: result.dagSummary || '',
+              outputDir: outDir
+            };
+          } catch (e) {
+            return { error: `analyze_project failed: ${e.message}` };
+          }
         }
       }),
 
@@ -251,31 +261,35 @@ ${toolMapping}
         description: 'Get next batch of Java files ready for translation (all dependencies completed)',
         args: {},
         async execute(args, context) {
-          if (!currentState) return { error: 'No active project. Call analyze_project first.' };
-          for (const [batchId, batch] of Object.entries(currentState.batches)) {
-            if (batch.status !== 'pending') continue;
-            const allDepsComplete = batch.dependencies.every(
-              depId => currentState.batches[depId]?.status === 'completed'
-            );
-            if (allDepsComplete) {
-              batch.status = 'in_progress';
-              batch.startedAt = new Date().toISOString();
-              saveState(currentState.outputDir);
-              return {
-                batchId,
-                files: batch.files,
-                ready: true
-              };
+          try {
+            if (!currentState) return { error: 'No active project. Call analyze_project first.' };
+            for (const [batchId, batch] of Object.entries(currentState.batches)) {
+              if (batch.status !== 'pending') continue;
+              const allDepsComplete = (batch.dependencies || []).every(
+                depId => currentState.batches[depId]?.status === 'completed'
+              );
+              if (allDepsComplete) {
+                batch.status = 'in_progress';
+                batch.startedAt = new Date().toISOString();
+                saveState(currentState.outputDir);
+                return {
+                  batchId,
+                  files: batch.files || [],
+                  ready: true
+                };
+              }
             }
+            const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
+            const blocked = Object.values(currentState.batches).filter(b => b.status === 'blocked').length;
+            const pending = Object.values(currentState.batches).filter(b => b.status === 'pending').length;
+            return {
+              ready: false,
+              message: 'No batches available. All dependencies must be completed first.',
+              progress: { completed, blocked, pending }
+            };
+          } catch (e) {
+            return { error: `next_batch failed: ${e.message}` };
           }
-          const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
-          const blocked = Object.values(currentState.batches).filter(b => b.status === 'blocked').length;
-          const pending = Object.values(currentState.batches).filter(b => b.status === 'pending').length;
-          return {
-            ready: false,
-            message: 'No batches available. All dependencies must be completed first.',
-            progress: { completed, blocked, pending }
-          };
         }
       }),
 
@@ -286,22 +300,26 @@ ${toolMapping}
           outputFiles: tool.schema.array(tool.schema.string()).optional().describe('Generated Cangjie file paths'),
         },
         async execute(args, context) {
-          const { batchId, outputFiles } = args;
-          if (!currentState || !currentState.batches[batchId]) {
-            return { error: `Batch ${batchId} not found` };
-          }
-          currentState.batches[batchId].status = 'completed';
-          currentState.batches[batchId].outputFiles = outputFiles || [];
-          currentState.batches[batchId].completedAt = new Date().toISOString();
-          saveState(currentState.outputDir);
+          try {
+            const { batchId, outputFiles } = args;
+            if (!currentState || !currentState.batches[batchId]) {
+              return { error: `Batch ${batchId} not found` };
+            }
+            currentState.batches[batchId].status = 'completed';
+            currentState.batches[batchId].outputFiles = outputFiles || [];
+            currentState.batches[batchId].completedAt = new Date().toISOString();
+            saveState(currentState.outputDir);
 
-          const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
-          return {
-            batchId,
-            status: 'completed',
-            progress: `${completed}/${currentState.totalFiles} files done`,
-            allComplete: completed === Object.keys(currentState.batches).length
-          };
+            const completed = Object.values(currentState.batches).filter(b => b.status === 'completed').length;
+            return {
+              batchId,
+              status: 'completed',
+              progress: `${completed}/${currentState.totalFiles} files done`,
+              allComplete: completed === Object.keys(currentState.batches).length
+            };
+          } catch (e) {
+            return { error: `mark_complete failed: ${e.message}` };
+          }
         }
       }),
 
@@ -312,27 +330,31 @@ ${toolMapping}
           reason: tool.schema.string().describe('Error description'),
         },
         async execute(args, context) {
-          const { batchId, reason } = args;
-          if (!currentState || !currentState.batches[batchId]) {
-            return { error: `Batch ${batchId} not found` };
+          try {
+            const { batchId, reason } = args;
+            if (!currentState || !currentState.batches[batchId]) {
+              return { error: `Batch ${batchId} not found` };
+            }
+            currentState.batches[batchId].status = 'blocked';
+            currentState.batches[batchId].blockReason = reason;
+            currentState.batches[batchId].blockedAt = new Date().toISOString();
+            saveState(currentState.outputDir);
+
+            const available = Object.entries(currentState.batches).filter(([id, b]) => {
+              if (b.status !== 'pending') return false;
+              return (b.dependencies || []).every(depId => currentState.batches[depId]?.status === 'completed');
+            });
+
+            return {
+              batchId,
+              status: 'blocked',
+              reason,
+              canProceed: available.length > 0,
+              availableBatches: available.map(([id]) => id)
+            };
+          } catch (e) {
+            return { error: `mark_blocked failed: ${e.message}` };
           }
-          currentState.batches[batchId].status = 'blocked';
-          currentState.batches[batchId].blockReason = reason;
-          currentState.batches[batchId].blockedAt = new Date().toISOString();
-          saveState(currentState.outputDir);
-
-          const available = Object.entries(currentState.batches).filter(([id, b]) => {
-            if (b.status !== 'pending') return false;
-            return b.dependencies.every(depId => currentState.batches[depId]?.status === 'completed');
-          });
-
-          return {
-            batchId,
-            status: 'blocked',
-            reason,
-            canProceed: available.length > 0,
-            availableBatches: available.map(([id]) => id)
-          };
         }
       }),
 
@@ -340,22 +362,26 @@ ${toolMapping}
         description: 'Get current translation progress',
         args: {},
         async execute(args, context) {
-          if (!currentState) return { error: 'No active project. Call analyze_project first.' };
-          const batches = Object.values(currentState.batches);
-          return {
-            projectPath: currentState.projectPath,
-            outputDir: currentState.outputDir,
-            totalFiles: currentState.totalFiles,
-            totalBatches: batches.length,
-            completed: batches.filter(b => b.status === 'completed').length,
-            inProgress: batches.filter(b => b.status === 'in_progress').length,
-            blocked: batches.filter(b => b.status === 'blocked').length,
-            pending: batches.filter(b => b.status === 'pending').length,
-            blockedBatches: batches.filter(b => b.status === 'blocked').map(b => ({
-              id: Object.entries(currentState.batches).find(([_, v]) => v === b)?.[0],
-              reason: b.blockReason
-            }))
-          };
+          try {
+            if (!currentState) return { error: 'No active project. Call analyze_project first.' };
+            const batches = Object.values(currentState.batches);
+            return {
+              projectPath: currentState.projectPath,
+              outputDir: currentState.outputDir,
+              totalFiles: currentState.totalFiles || 0,
+              totalBatches: batches.length,
+              completed: batches.filter(b => b.status === 'completed').length,
+              inProgress: batches.filter(b => b.status === 'in_progress').length,
+              blocked: batches.filter(b => b.status === 'blocked').length,
+              pending: batches.filter(b => b.status === 'pending').length,
+              blockedBatches: batches.filter(b => b.status === 'blocked').map(b => ({
+                id: Object.entries(currentState.batches).find(([_, v]) => v === b)?.[0],
+                reason: b.blockReason || ''
+              }))
+            };
+          } catch (e) {
+            return { error: `translation_status failed: ${e.message}` };
+          }
         }
       })
     }
