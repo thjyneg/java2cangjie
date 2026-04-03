@@ -1,6 +1,9 @@
 {
   "name": "java2cangjie",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "type": "module",
-  "main": ".opencode/plugins/java2cangjie.js"
+  "main": ".opencode/plugins/java2cangjie.js",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.3.13"
+  }
 }
