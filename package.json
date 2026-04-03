@@ -17,7 +17,7 @@
     "hooks/",
     "CLAUDE.md"
   ],
-  "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.0.0"
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.3.13"
   }
 }

@@ -1,3 +1,11 @@
+/**
+ * Java2Cangjie plugin for OpenCode.ai
+ *
+ * Injects translation bootstrap context via chat messages transform.
+ * Auto-registers skills directory via config hook (no symlinks needed).
+ * Provides 6 custom tools for dependency-driven translation workflow.
+ */
+
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -90,7 +98,7 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
     const depSet = new Set();
     const info = fileMap.get(file.className);
 
-    // 1. Parse regular imports: import x.y.Z; or import x.y.*;
+    // 1. Parse regular imports: import x.y.Z; or import x.y.*
     const regularImports = normalized.match(/^import\s+(?!static\b)([\w.]+(?:\.\*)?)\s*;/gm) || [];
     for (const imp of regularImports) {
       const imported = imp.replace(/^import\s+/, '').replace(/\s*;$/, '').trim();
@@ -109,7 +117,7 @@ const analyzeJavaDependencies = (javaRoot, maxBatchSize = 3) => {
       }
     }
 
-    // 2. Parse static imports: import static x.y.Z.method; or import static x.y.Z.*;
+    // 2. Parse static imports: import static x.y.Z.method; or import static x.y.Z.*
     const staticImports = normalized.match(/^import\s+static\s+([\w.]+(?:\.\*)?)\s*;/gm) || [];
     for (const imp of staticImports) {
       const imported = imp.replace(/^import\s+static\s+/, '').replace(/\s*;$/, '').trim();
@@ -269,12 +277,16 @@ const saveState = (outputDir) => {
 export const Java2CangjiePlugin = async ({ client, directory }) => {
   const skillsDir = path.resolve(__dirname, '../../skills');
 
+  // Helper to generate bootstrap content
   const getBootstrapContent = () => {
     const skillPath = path.join(skillsDir, 'using-java2cangjie', 'SKILL.md');
     if (!fs.existsSync(skillPath)) return null;
+
     const fullContent = fs.readFileSync(skillPath, 'utf8');
     const { content } = extractAndStripFrontmatter(fullContent);
+
     const toolMapping = `**Tool Mapping for OpenCode:**
+When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` → \`todowrite\`
 - \`Skill\` tool → OpenCode's native \`skill\` tool
 - \`Read\`, \`Write\`, \`Edit\`, \`Bash\` → Your native tools
@@ -293,83 +305,55 @@ export const Java2CangjiePlugin = async ({ client, directory }) => {
 
     return `<EXTREMELY_IMPORTANT>
 You have the Java to Cangjie translation system.
-**IMPORTANT: The using-java2cangjie skill content is included below. It is ALREADY LOADED.**
+
+**IMPORTANT: The using-java2cangjie skill content is included below. It is ALREADY LOADED - you are currently following it. Do NOT use the skill tool to load "using-java2cangjie" again - that would be redundant.**
+
 ${content}
+
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
   };
 
-  const ensureSkillLinks = () => {
-    const globalSkillsDir = path.join(os.homedir(), '.config', 'opencode', 'skills');
-    if (!fs.existsSync(skillsDir) || !fs.existsSync(globalSkillsDir)) return;
-
-    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const skillName = entry.name;
-      const skillPath = path.join(skillsDir, skillName);
-      const skillMd = path.join(skillPath, 'SKILL.md');
-      if (!fs.existsSync(skillMd)) continue;
-
-      const linkPath = path.join(globalSkillsDir, skillName);
-      if (fs.existsSync(linkPath)) continue;
-
-      try {
-        fs.mkdirSync(path.dirname(linkPath), { recursive: true });
-        if (process.platform === 'win32') {
-          execSync(`mklink /J "${linkPath}" "${skillPath}"`, { stdio: 'pipe' });
-        } else {
-          fs.symlinkSync(skillPath, linkPath);
-        }
-      } catch (_) {}
-    }
-  };
-  ensureSkillLinks();
-
   return {
-    'installation.updated': async () => {
-      ensureSkillLinks();
-    },
-
-    // Inject bootstrap context into new sessions using official SDK
-    // Uses session.created event + client.session.prompt with noReply:true
-    // (documented in OpenCode plugin API: event subscription + session.prompt)
-    'session.created': async ({ event }) => {
-      try {
-        const bootstrap = getBootstrapContent();
-        if (typeof bootstrap !== 'string' || bootstrap.length === 0) return;
-
-        const sessionId = event?.properties?.id;
-        if (!sessionId) return;
-
-        await client.session.prompt({
-          path: { id: sessionId },
-          body: {
-            noReply: true,
-            parts: [{ type: 'text', text: bootstrap }],
-          },
-        });
-      } catch (_) {
-        // Silently fail — bootstrap injection is best-effort
+    // Inject skills path into live config so OpenCode discovers all java2cangjie skills
+    // without requiring manual symlinks or config file edits.
+    config: async (config) => {
+      config.skills = config.skills || {};
+      config.skills.paths = config.skills.paths || [];
+      if (!config.skills.paths.includes(skillsDir)) {
+        config.skills.paths.push(skillsDir);
       }
     },
 
-    // Also inject on compaction to preserve context across session compression
+    // Inject bootstrap into the first user message of each session.
+    // Using a user message instead of a system message avoids:
+    //   1. Token bloat from system messages repeated every turn
+    //   2. Multiple system messages breaking Qwen and other models
+    'experimental.chat.messages.transform': async (_input, output) => {
+      const bootstrap = getBootstrapContent();
+      if (!bootstrap || !output.messages.length) return;
+      const firstUser = output.messages.find(m => m.info.role === 'user');
+      if (!firstUser || !firstUser.parts.length) return;
+      // Only inject once
+      if (firstUser.parts.some(p => p.type === 'text' && p.text.includes('EXTREMELY_IMPORTANT'))) return;
+      const ref = firstUser.parts[0];
+      firstUser.parts.unshift({ ...ref, type: 'text', text: bootstrap });
+    },
+
+    // Preserve context across session compaction
     'experimental.session.compacting': async (_input, output) => {
-      try {
-        const bootstrap = getBootstrapContent();
-        if (typeof bootstrap === 'string' && bootstrap.length > 0) {
-          output.context.push(bootstrap);
-        }
-      } catch (_) {}
+      const bootstrap = getBootstrapContent();
+      if (typeof bootstrap === 'string' && bootstrap.length > 0) {
+        output.context.push(bootstrap);
+      }
     },
 
     tool: {
       analyze_project: tool({
         description: 'Analyze Java project structure, build dependency graph, return translation batch plan',
         args: {
-          javaPath: tool.schema.union(tool.schema.string(), tool.schema.array(tool.schema.string())).describe('Path(s) to Java source root directory(ies). Can be a single path or array of paths.'),
-          maxBatchSize: tool.schema.number().describe('Max files per batch (default: 3)'),
+          javaPath: tool.schema.union([tool.schema.string(), tool.schema.array(tool.schema.string())]).describe('Path(s) to Java source root directory(ies). Can be a single path or array of paths.'),
+          maxBatchSize: tool.schema.number().optional().describe('Max files per batch (default: 3)'),
           outputDir: tool.schema.string().optional().describe('Output directory for translated files (default: <javaPath>/../j2cjgenerated/)'),
         },
         async execute(args, context) {
