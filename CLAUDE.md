@@ -52,10 +52,11 @@ agents/                             # 3 个代理
 ## Translation Workflow
 
 1. **Analyze** — 构建依赖 DAG，规划批次（1-3 文件）
-2. **Translate** — AI 读 Java，查仓颉文档，写仓颉代码
-3. **Compile** — 每批翻译后必须 `cjpm build`（不可跳过）
-4. **Fix** — 编译失败：查文档修复，最多 3 次，之后暂停询问用户
-5. **Report** — 生成翻译报告
+2. **Mock** — 为无仓颉对应的三方 API 创建 stub（`_mock/` 目录，方法抛出"未实现"异常）
+3. **Translate** — AI 读 Java，查仓颉文档，写仓颉代码
+4. **Compile** — 每批翻译后必须 `cjpm build`（不可跳过）
+5. **Fix** — 编译失败：查文档修复，最多 3 次，之后暂停询问用户
+6. **Report** — 生成翻译报告
 
 翻译顺序遵循 DAG 从叶子节点向上。状态保存在 `<output_dir>/.java2cangjie_state.json`。
 
@@ -74,7 +75,10 @@ agents/                             # 3 个代理
 - Cangjie: `src/com/example/`（不要 `main/java` 或 `main/cj`）
 
 ### InputStream.close()
-先转为 `Resource`：`(stream as Resource).close()`
+`close()` 属于 `Resource` 接口，不是流方法。且 `as` 返回 Option，需要 if-let 解包：
+```cj
+if (let Some(r) <- (stream as Resource)) { r.close() }
+```
 
 ### Type Mappings
 | Java | Cangjie |
@@ -86,6 +90,21 @@ agents/                             # 3 个代理
 | `Optional<T>` | `Option<T>` |
 | `try/catch` | `try/except` |
 | `synchronized` | `std.sync.Mutex` |
+| `~value` (bitwise NOT) | `(-1) ^ value`（仓颉没有 `~` 运算符） |
+
+### Class Inheritance Rules
+- `abstract class` 构造函数不能调用 `open` 方法 — 用延迟初始化或子类传参
+- `public` 类的父类也必须 `public`（可见性传播）
+- `redef` 只用于 `open class` 子类，不用于 `abstract class` 子类
+- 构造函数 `init` 不能有返回类型（去掉 `: Unit`）
+
+### Option Type Rules
+- 不能用 `==` 比较 Option，必须用 `match` 或 `if-let`
+- `as` 类型转换返回 `Option<T>`，需要 `if-let` 解包
+- `None` 是泛型的，声明时需要类型参数
+
+### Array Initialization
+- `Array<Byte>()` 不合法，必须指定大小和初始值：`Array<Byte>(0, repeat: 0)`
 
 ### No Int() Constructor
 用 `Int64()` 或 `Int32()` 做字符串转整数。仓颉没有 `Int()` 构造器。

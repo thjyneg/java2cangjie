@@ -84,7 +84,7 @@ Use when user requests:
 ## Workflow Overview
 
 ```
-New project:  translate → (compile errors?) → fix → report
+New project:  analyze → create mocks → translate → (compile errors?) → fix → report
 Resume:       check state → next batch → continue
 Delegate:     Use cangjie-engineer for complex Cangjie code generation tasks
 ```

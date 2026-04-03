@@ -45,6 +45,92 @@ grep -rn "^import " <java_dir> --include="*.java" | grep -v "java\.\|javax\.\|or
 # Format: { batches: { "batch-N": { status, files, retries } }, totalFiles, outputDir }
 ```
 
+## Third-Party API Mock Strategy
+
+When translating Java code that depends on third-party or JDK APIs without Cangjie equivalents, create stub (mock) APIs so the project compiles.
+
+### API Classification
+
+| Category | Strategy | Examples |
+|----------|----------|----------|
+| **Cangjie std 有对应** | 直接映射 | `ArrayList`→`std.collection.ArrayList`, `HashMap`→`std.collection.HashMap`, `File`→`std.fs.File`, `InputStream`→`std.fs.InputStream` |
+| **Cangjie 无对应但核心依赖** | 创建 mock stub | `java.util.zip.*`, `javax.crypto.*`, `java.nio.file.*`, `java.security.*` |
+| **测试框架** | 跳过，不翻译 | `org.junit.*`, `org.mockito.*`, `org.assertj.*`, `org.powermock.*` |
+
+### Mock Stub Generation Rules
+
+When an import has no Cangjie equivalent:
+
+1. **Create stub in dedicated mock package** under the output directory:
+
+```
+<output_dir>/<module>/src/_mock/<package_path>/
+```
+
+2. **Stub file naming**: match original class name, e.g. `java.util.zip.CRC32` → `src/_mock/java/util/zip/CRC32.cj`
+
+3. **Stub content rules**:
+   - Define the `class` or `interface` matching the original Java API signature
+   - All methods throw `"未实现"` exception using仓颉 syntax:
+     ```cj
+     package _mock.java.util.zip
+
+     class CRC32 {
+         var value: UInt32 = 0
+
+         func update(b: Array<Byte>): Unit {
+             throw Exception("未实现: CRC32.update")
+         }
+
+         func getValue(): UInt32 {
+             throw Exception("未实现: CRC32.getValue")
+         }
+
+         func reset(): Unit {
+             this.value = 0
+         }
+     }
+     ```
+   - For interfaces, declare all methods
+   - For abstract classes, declare concrete methods as stubs
+   - Keep field names matching Java originals for readability
+   - Use `public` visibility for all mock members
+
+4. **When to create mock stubs**:
+   - During translation, when encountering an import that cannot be mapped to Cangjie std
+   - Create the stub BEFORE translating the file that depends on it
+   - Add mock stubs as a separate step in the batch (before main translation)
+
+5. **Mock stub priority** — create stubs only for APIs actually used by the project code being translated. Do not mock entire JDK.
+
+6. **Import replacement**: In translated files, replace original Java imports with mock imports:
+   ```cj
+   // Before: import java.util.zip.CRC32
+   // After:  import _mock.java.util.zip.CRC32
+   ```
+
+### Common Java-to-Cangjie Std Mappings (No Mock Needed)
+
+These Java APIs have direct Cangjie equivalents — use them instead of mocking:
+
+| Java API | Cangjie Equivalent |
+|----------|-------------------|
+| `java.util.ArrayList` | `std.collection.ArrayList` |
+| `java.util.HashMap` | `std.collection.HashMap` |
+| `java.util.HashSet` | `std.collection.HashSet` |
+| `java.util.List` | `std.collection.ArrayList` (or use interface) |
+| `java.util.Map` | `std.collection.HashMap` (or use interface) |
+| `java.util.Set` | `std.collection.HashSet` (or use interface) |
+| `java.io.File` | `std.fs.File` |
+| `java.io.InputStream` | `std.io.InputStream` or `std.fs.InputStream` |
+| `java.io.OutputStream` | `std.io.OutputStream` or `std.fs.OutputStream` |
+| `java.io.IOException` | `Exception` or custom exception class |
+| `java.nio.ByteBuffer` | `Array<Byte>` + manual position tracking |
+| `java.nio.charset.Charset` | `String` (Cangjie uses UTF-8 by default) |
+| `java.util.Arrays` | `std.collection.*` utility functions |
+| `java.util.Collections` | `std.collection.*` utility functions |
+| `java.util.Objects` | Direct `==` comparison or `Option` |
+
 ## Translation Loop
 
 For each batch (1-3 files):
@@ -53,7 +139,14 @@ For each batch (1-3 files):
 
 Read the Java files in the current batch. Understand the class structure, methods, and dependencies.
 
-### 2. Lookup Cangjie Documentation
+### 2. Identify and Create Mock Stubs
+
+Before translating, scan all imports in the batch:
+- Imports with Cangjie std equivalents → map directly
+- Imports without equivalents → create mock stubs in `_mock/` directory
+- Test imports → skip
+
+### 3. Lookup Cangjie Documentation
 
 **MANDATORY: Read relevant docs BEFORE translating.**
 
@@ -64,7 +157,7 @@ Use the Cangjie skills for documentation lookup:
 4. `cangjie-original-docs` → full original documentation fallback
 5. `cangjie-regulations` → naming conventions and best practices
 
-### 3. Translate Each File
+### 4. Translate Each File
 
 Key mapping rules:
 
@@ -105,10 +198,177 @@ Key mapping rules:
 
 **IMPORTANT - Type Notes:**
 - `byte[]` in Java translates to `Array<Byte>` in Cangjie (not `Byte[]`)
-- Always initialize arrays: `Array<Byte>(0, { 0 })`
+- Always initialize arrays: `Array<Byte>(0, repeat: 0)` (NOT `Array<Byte>()`)
 - Use `Int64` for Java `long` to avoid overflow
 - **There is no `Int()` constructor in Cangjie** — use `Int64()` or `Int32()` for string-to-int conversion
 - **`Byte` in Cangjie is `UInt8`** — `Byte()` constructor does NOT accept `Int64`, use `UInt8()` instead
+
+#### CRITICAL: Bitwise NOT Operator
+
+Cangjie has NO `~` (bitwise NOT) operator. Replace with XOR:
+
+```cj
+// Java: ~value
+// Cangjie: (-1) ^ value
+let result = (-1) ^ value
+```
+
+Other bitwise operators are the same: `&`, `|`, `^`, `<<`, `>>`
+For unsigned right shift `>>>`: use `>>` on unsigned types.
+
+#### CRITICAL: Class Inheritance and Access Control
+
+**1. `abstract class` constructor cannot call `open` methods:**
+
+```cj
+// WRONG: calling open method in constructor
+abstract class Base {
+    public init() {
+        this.doSetup()  // error: open method in constructor
+    }
+    protected open func doSetup(): Unit { ... }
+}
+
+// FIX A: Lazy initialization with Option
+abstract class Base {
+    private var setup: ?Bool = None
+    protected open func doSetup(): Unit { ... }
+    private func lazySetup(): Unit {
+        match (setup) {
+            case None => doSetup(); setup = Some(true)
+            case Some(_) => ()
+        }
+    }
+}
+
+// FIX B: Subclass creates and passes to superclass (recommended)
+abstract class Base {
+    private let config: Config
+    protected init(config: Config) {
+        this.config = config  // direct assignment, no open calls
+    }
+}
+class Derived <: Base {
+    public init() {
+        super(Config(...))  // subclass creates config
+    }
+}
+```
+
+**2. `public` visibility propagation:**
+- If a `public class` inherits from another class, the parent MUST also be `public`
+- Fields accessed from other packages MUST have explicit `public` modifier (default is `internal`)
+- Interface methods are `public` by default, but class methods are not
+
+**3. `open` / `redef` rules:**
+- `abstract class` methods can be overridden by abstract subclasses without `open`
+- `public class` (non-abstract) overriding parent methods requires parent method to be `open`
+- **`redef` is ONLY for `open class` subclasses**, NOT for `abstract class` subclasses
+
+```cj
+// WRONG: redef in abstract class hierarchy
+public class Derived <: AbstractBase {
+    public redef func doWork() { ... }  // ❌ if AbstractBase is abstract
+}
+
+// CORRECT: just override without redef
+public class Derived <: AbstractBase {
+    public func doWork() { ... }  // ✅
+}
+```
+
+#### CRITICAL: Option Type Handling
+
+**1. Cannot use `==` with Option:**
+
+```cj
+// WRONG:
+if (decrypter == None) { ... }
+if (value == Some(5)) { ... }
+
+// CORRECT: use match
+match (decrypter) {
+    case None => ...
+    case Some(d) => ...
+}
+
+// CORRECT: use if-let
+if (let Some(d) <- decrypter) { ... }
+```
+
+**2. `as` type cast returns Option:**
+
+```cj
+// WRONG: as Resource returns Option<Resource>
+(stream as Resource).close()
+
+// CORRECT: unwrap with if-let
+if (let Some(r) <- (stream as Resource)) {
+    r.close()
+}
+```
+
+**3. `None` requires type argument in declarations:**
+
+```cj
+// WRONG: generic type needs argument
+var x: ?Decrypter = None  // may cause error
+
+// CORRECT:
+var x: Option<Decrypter> = Option<Decrypter>.None
+// or
+var x: ?Decrypter = None<Decrypter>
+```
+
+#### CRITICAL: Constructor Rules
+
+**1. Constructor (`init`) must NOT have a return type:**
+
+```cj
+// WRONG:
+public init(...): Unit {
+// CORRECT:
+public init(...) {
+```
+
+**2. Empty constructor is fine:**
+
+```cj
+public init() {}
+```
+
+#### CRITICAL: Enum Properties and Comparison
+
+**1. Enum comparison uses `match`, not `==`:**
+
+```cj
+// WRONG:
+if (method == DEFLATE(8)) { ... }
+
+// CORRECT:
+match (method) {
+    case DEFLATE(_) => ...
+    case _ => ()
+}
+```
+
+**2. Enum values with data use `prop` for accessors:**
+
+```cj
+public enum CompressionMethod {
+    | STORE(Int64)
+    | DEFLATE(Int64)
+
+    public prop code: Int64 {
+        get() {
+            match (this) {
+                case STORE(c) => c
+                case DEFLATE(c) => c
+            }
+        }
+    }
+}
+```
 
 #### CRITICAL: Cangjie Keyword Escaping
 
@@ -175,7 +435,7 @@ let stream = FileInputStream("file.txt")
 
 For try-with-resources patterns, prefer using `try` block with explicit `(stream as Resource).close()` in finally.
 
-### 4. Write Output
+### 5. Write Output
 
 **IMPORTANT - Directory Structure Differences:**
 
@@ -213,7 +473,7 @@ output-type = "static"
 - File path: `src/net/lingala/zip4j/ClassName.cj`
 - cjpm.toml name should match the base module name (e.g., "zip4j")
 
-### 5. Compile
+### 6. Compile
 
 **OpenCode (with plugin tools):**
 
@@ -243,7 +503,7 @@ Create a placeholder `.cj` file (e.g., `emptyp.cj`) in the directory.
 | `cjpm build` | Claude Code translation workflow | Auto-handles dependencies, standard approach |
 | `cjc -p` | Single-package quick check only | No dependency resolution, use only for isolated packages |
 
-### 6. Track Progress
+### 7. Track Progress
 
 **If compilation passes:**
 - Mark batch as complete

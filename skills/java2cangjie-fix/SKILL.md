@@ -188,6 +188,27 @@ Fix:  Replace Java for-each with Cangjie for-in:
 
 See `error-patterns.md` in this directory for the complete pattern catalog.
 
+### Compilation Error Quick Reference
+
+| Error Message | Cause | Fix |
+|--------------|-------|-----|
+| `undeclared identifier 'Byte'` | Used `Byte()` constructor | Change to `UInt8()` |
+| `undeclared type name 'ArrayList'` | Missing import | Add `import std.collection.ArrayList` |
+| `mismatched types` | Parameter type mismatch | Check `UInt8` vs `Int64` vs `Byte` |
+| `can not access field 'xxx'` | Field missing `public` | Add `public var xxx` |
+| `'close' is not a member of interface 'InputStream'` | close belongs to Resource | Use `if-let (stream as Resource)` then `.close()` |
+| `generic type should be used with type argument` | `None` missing type parameter | Use `None<T>` or `match` |
+| `cannot override function 'xxx'` | Parent method not marked `open` | Add `open` to parent method |
+| `'redef' cannot be used` | redef on abstract class subclass | Remove `redef`, just override directly |
+| `'public' declaration uses 'internal' types` | public class references internal parent | Add `public` to parent class too |
+| `unexpected modifier 'open' on function` | Brace mismatch causing class to close early | Check `}` matching |
+| `instance member function cannot be accessed in constructor` | Constructor calls open method | Use lazy init or pass from subclass |
+| `there should be no return value type in a constructor` | init has return type | Remove `: Unit` from init |
+| `Array<Byte>()` invalid | Missing size and initial value | Use `Array<Byte>(0, repeat: 0)` |
+| `cannot compare with ==` on Option | Option doesn't support == | Use `match` or `if-let` |
+| `~ operator not found` | Cangjie has no bitwise NOT | Replace `~expr` with `(-1) ^ expr` |
+| `no '.cj' file in directory` | cjpm won't scan subdirs | Add placeholder `emptyp.cj` file |
+
 ## Rules
 
 1. **NEVER** batch multiple fixes without compiling between them
