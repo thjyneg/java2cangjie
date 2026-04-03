@@ -331,15 +331,37 @@ ${toolMapping}
       ensureSkillLinks();
     },
 
-    'experimental.chat.system.transform': async (_input, output) => {
+    // Inject bootstrap context into new sessions using official SDK
+    // Uses session.created event + client.session.prompt with noReply:true
+    // (documented in OpenCode plugin API: event subscription + session.prompt)
+    'session.created': async ({ event }) => {
+      try {
+        const bootstrap = getBootstrapContent();
+        if (typeof bootstrap !== 'string' || bootstrap.length === 0) return;
+
+        const sessionId = event?.properties?.id;
+        if (!sessionId) return;
+
+        await client.session.prompt({
+          path: { id: sessionId },
+          body: {
+            noReply: true,
+            parts: [{ type: 'text', text: bootstrap }],
+          },
+        });
+      } catch (_) {
+        // Silently fail — bootstrap injection is best-effort
+      }
+    },
+
+    // Also inject on compaction to preserve context across session compression
+    'experimental.session.compacting': async (_input, output) => {
       try {
         const bootstrap = getBootstrapContent();
         if (typeof bootstrap === 'string' && bootstrap.length > 0) {
-          (output.system ||= []).push(bootstrap);
+          output.context.push(bootstrap);
         }
-      } catch (e) {
-        // Silently fail — never push undefined/non-string into output.system
-      }
+      } catch (_) {}
     },
 
     tool: {

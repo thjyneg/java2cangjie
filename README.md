@@ -79,11 +79,11 @@ git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2can
 
 ### 方式二：OpenCode
 
-支持三种安装方式，详见 [.opencode/INSTALL.md](.opencode/INSTALL.md)。
+OpenCode 通过 `.opencode/plugins/` 目录自动加载本地插件，或通过 `opencode.json` 的 `plugin` 数组从 npm/git 安装。详见 [.opencode/INSTALL.md](.opencode/INSTALL.md)。
 
-#### 方式 2a：从 GitHub 自动安装（推荐）
+#### 方式 2a：从 git 自动安装（推荐）
 
-在 `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）的 `plugin` 数组中添加：
+在 `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）中添加：
 
 ```json
 {
@@ -93,19 +93,15 @@ git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2can
 }
 ```
 
-重启 OpenCode，插件会自动安装并注册所有技能和工具。
+重启 OpenCode，插件通过 Bun 自动安装并注册（缓存在 `~/.cache/opencode/node_modules/`）。
 
-**验证**：使用 skill 工具列出技能，应包含 `java2cangjie-*` 和 `cangjie-*` 系列：
-
-```bash
-opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie
-```
+**验证**：使用 skill 工具列出技能，应包含 `java2cangjie-*` 和 `cangjie-*` 系列。
 
 > **固定版本**：URL 后加 `#<tag>`，例如 `#v3.0.0`。
 
 #### 方式 2b：项目级本地安装
 
-将仓库克隆到项目中，通过符号链接加载插件：
+OpenCode 启动时自动扫描 `.opencode/plugins/` 目录下的 JS 文件：
 
 ```bash
 git clone https://github.com/thjyneg/java2cangjie.git .java2cangjie
@@ -120,7 +116,7 @@ git clone https://github.com/thjyneg/java2cangjie.git ~/.config/opencode/java2ca
 ln -s ../java2cangjie/.opencode/plugins/java2cangjie.js ~/.config/opencode/plugins/java2cangjie.js
 ```
 
-OpenCode 插件额外提供工作流控制工具：`analyze_project`、`next_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
+OpenCode 插件提供自定义工具：`analyze_project`、`next_batch`、`compile_batch`、`mark_complete`、`mark_blocked`、`translation_status`。
 
 ## 快速开始
 

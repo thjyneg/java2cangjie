@@ -99,6 +99,7 @@ New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.config\opencode\plugins
 
 | 技能 | 说明 |
 |------|------|
+| `using-java2cangjie` | Bootstrap 技能（自动注入） |
 | `java2cangjie-translate` | 翻译执行 |
 | `java2cangjie-fix` | 编译错误修复 |
 | `java2cangjie-report` | 翻译报告生成 |
@@ -107,6 +108,7 @@ New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.config\opencode\plugins
 | `cangjie-stdx` | 扩展标准库 |
 | `cangjie-toolchains` | 工具链文档 |
 | `cangjie-regulations` | 编码规范 |
+| `cangjie-original-docs` | 完整原始文档 fallback |
 
 ## Usage
 
