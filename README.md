@@ -1,25 +1,43 @@
-# Java2Cangjie Superpowers Plugin
+# Java2Cangjie Plugin
 
-基于 Superpowers 框架的 Java 到仓颉翻译插件，使用纯 AI 翻译 + 增量依赖驱动策略。
+Java 到仓颉翻译插件，使用纯 AI 翻译 + 增量依赖驱动策略。支持 Claude Code 和 OpenCode。
 
 ## 特性
 
 - **纯 AI 翻译** - 不依赖 j2cj 工具，AI 直接读取 Java 源码并翻译为仓颉代码
 - **增量依赖驱动** - 解析依赖 DAG，自底向上逐批翻译（每批 1-3 文件）
-- **混合控制架构** - 插件工具强制工作流可靠性，技能引导翻译质量
+- **三方 API Mock** - 自动为无仓颉对应的 Java API 生成 stub，确保编译通过
 - **双平台支持** - OpenCode（插件工具 + 技能）+ Claude Code（技能 + hooks）
-- **完整仓颉文档** - 包含基础类型、标准库 API、语言手册和示例代码
+- **完整仓颉文档** - 包含语言特性、标准库 API、工具链和编码规范
 
 ## 安装
 
 ### 前置要求
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 或 [OpenCode](https://opencode.ai/) 已安装
-- 仓颉编译器 `cjpm` 已安装（用于编译验证，可选）
+- 仓颉工具链已安装（`cjpm`、`cjc`），用于编译验证
+- Python 3.8+（可选，用于依赖分析脚本）
 
-### 方式一：Claude Code
+### 方式一：Claude Code（推荐 --plugin-dir 方式）
 
-Claude Code 通过 hooks 在会话启动时自动注入 Bootstrap 技能。
+最简方式，无需克隆或配置 hooks：
+
+```bash
+cd /path/to/your-java-project
+claude --plugin-dir /path/to/java2cangjie
+```
+
+启动后直接用自然语言请求翻译即可：
+
+```
+请将这个 Java 项目翻译为仓颉语言
+```
+
+> **提示**：`--plugin-dir` 会自动加载插件的 skills、agents 和 hooks，SessionStart hook 自动注入翻译系统引导。
+
+### 方式二：Claude Code（全局安装）
+
+适合经常使用翻译功能的用户。
 
 **步骤 1：克隆仓库**
 
@@ -55,13 +73,9 @@ git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2can
 
 **步骤 3：验证**
 
-启动新的 Claude Code 会话，系统提示应包含 Java to Cangjie 翻译系统。如果正常，输入：
+启动新的 Claude Code 会话，系统提示应包含 Java to Cangjie 翻译系统。
 
-```
-请翻译一个 Java 项目
-```
-
-AI 会识别翻译任务并调用相应技能。
+详细的 Claude Code 安装说明见 [docs/README.claude-code.md](docs/README.claude-code.md)。
 
 ### 方式二：OpenCode
 
@@ -110,8 +124,6 @@ OpenCode 插件额外提供工作流控制工具：`analyze_project`、`next_bat
 
 ## 快速开始
 
-### 使用
-
 在对话中请求翻译 Java 项目：
 
 ```
@@ -120,39 +132,38 @@ OpenCode 插件额外提供工作流控制工具：`analyze_project`、`next_bat
 
 插件会自动：
 1. 分析 Java 项目结构和依赖关系
-2. 按依赖顺序分批翻译（叶子文件优先）
-3. 每批翻译后编译验证
-4. 编译失败时查文档修复
-5. 生成翻译报告
-
-### 输出
+2. 为无对应的三方 API 创建 mock stub
+3. 按依赖顺序分批翻译（叶子文件优先）
+4. 每批翻译后编译验证
+5. 编译失败时查文档修复（最多 3 次，之后暂停询问用户）
+6. 生成翻译报告
 
 翻译结果保存在 `<java_project>/j2cjgenerated/`，保持原始包结构。
 
 ## 项目结构
 
 ```
-java2cangjie-superpowers/
-├── skills/                         # 10 个技能
-│   ├── using-java2cangjie/         # Bootstrap 技能
-│   ├── java2cangjie-translate/     # 翻译执行
-│   ├── java2cangjie-fix/           # 错误修复 + error-patterns.md
-│   ├── java2cangjie-report/        # 报告生成
-│   ├── cangjie-lang-features/      # 仓颉语言特性
-│   ├── cangjie-std/                # 标准库速查
-│   ├── cangjie-stdx/               # 扩展标准库
-│   ├── cangjie-toolchains/         # 工具链文档
-│   ├── cangjie-regulations/        # 编码规范
-│   └── cangjie-original-docs/      # 原始文档 fallback
-├── agents/                         # 3 个代理
-│   ├── cangjie-engineer.md         # 仓颉开发专家
-│   ├── translation-reviewer.md     # 翻译质量审查
-│   └── error-fixer.md              # 错误修复执行
-├── .opencode/plugins/              # OpenCode 插件 (tools + config + bootstrap)
-├── hooks/                          # Claude Code hooks (session-start)
-├── docs/                           # 设计文档
-│   └── superpowers/specs/          # 设计规范
-└── templates/checkpoint.md         # 检查点模板
+java2cangjie/
+├── .claude-plugin/
+│   └── plugin.json              # Claude Code 清单
+├── skills/                      # 10 个技能
+│   ├── using-java2cangjie/      # Bootstrap 技能
+│   ├── java2cangjie-translate/  # 翻译映射规则
+│   ├── java2cangjie-fix/        # 错误修复
+│   ├── java2cangjie-report/     # 报告生成
+│   ├── cangjie-lang-features/   # 仓颉语言特性
+│   ├── cangjie-std/             # 标准库速查
+│   ├── cangjie-stdx/            # 扩展标准库
+│   ├── cangjie-toolchains/      # 工具链文档
+│   ├── cangjie-regulations/     # 编码规范
+│   └── cangjie-original-docs/   # 完整原始文档 fallback
+├── agents/                      # 3 个代理
+│   ├── cangjie-engineer.md      # 仓颉开发专家
+│   ├── translation-reviewer.md  # 翻译质量审查
+│   └── error-fixer.md           # 错误修复执行
+├── hooks/                       # Claude Code hooks (SessionStart)
+├── scripts/                     # Python 依赖分析脚本
+└── .opencode/                   # OpenCode 插件（工具 + 配置）
 ```
 
 ## Java 到仓颉常用映射
@@ -161,10 +172,13 @@ java2cangjie-superpowers/
 |------|------|
 | `ArrayList<E>` | `std.collection.ArrayList<E>` |
 | `HashMap<K,V>` | `std.collection.HashMap<K,V>` |
-| `null` | `Option<T>.None` 或 `??` |
+| `null` | `None` / `?? default` |
+| `Optional<T>` | `Option<T>` |
 | `try/catch` | `try/except` |
 | `synchronized` | `std.sync.Mutex` |
-| `instanceof` | `match` 模式匹配 |
+| `instanceof` | `is` 或 `match` 模式匹配 |
+| `~value` (位运算 NOT) | `(-1) ^ value` |
+| `byte[]` | `Array<Byte>` |
 
 ## 文档查找
 
@@ -172,109 +186,12 @@ java2cangjie-superpowers/
 |---------|------|
 | 语言语法/特性 | `cangjie-lang-features` |
 | 标准库 API | `cangjie-std` |
-| 扩展库 (JSON/配置等) | `cangjie-stdx` |
+| 扩展库 (JSON/编码等) | `cangjie-stdx` |
 | 编译器/工具链 | `cangjie-toolchains` |
 | 编码规范 | `cangjie-regulations` |
 | 完整原始文档 | `cangjie-original-docs` |
 
-## 设计文档
-
-完整设计规范：`docs/superpowers/specs/2026-03-31-java2cangjie-superpowers-design.md`
-
 ## 许可证
 
-本项目包含以下组件：
-- Superpowers 插件代码：MIT
+- 插件代码：Apache-2.0
 - 仓颉语言文档：遵循其原始许可证
-
----
-
-# Claude Code 版本
-
-## 安装 (Claude Code)
-
-### 前置要求
-
-- Claude Code 已安装
-- Cangjie 工具链已安装 (cjpm, cjc)
-- Python 3.8+ (用于依赖分析脚本)
-
-### 方式一：插件目录安装
-
-```bash
-# 克隆仓库
-git clone https://github.com/thjyneg/java2cangjie.git ~/.claude/plugins/java2cangjie
-
-# 或使用 --plugin-dir 标志
-claude --plugin-dir /path/to/java2cangjie
-```
-
-### 验证安装
-
-在 Claude Code 中运行 `/help` 并检查：
-- `/j2c-translate` 命令
-- `java2cangjie` 系列技能 (translate, fix, report, using-*)
-- Cangjie 文档技能
-
-## 快速开始 (Claude Code)
-
-### 翻译 Java 项目
-
-```bash
-# 在项目目录中启动 Claude Code
-cd /path/to/java-project
-
-# 在 Claude Code 中：
-/j2c-translate --java-path ./src/main/java
-```
-
-### 恢复中断的翻译
-
-```bash
-/j2c-translate --java-path ./src/main/java --resume
-```
-
-### 自定义输出目录
-
-```bash
-/j2c-translate --java-path ./src/main/java --output-dir ./cj-output
-```
-
-### 调整批处理大小
-
-```bash
-/j2c-translate --java-path ./src/main/java --max-batch-size 2
-```
-
-## Claude Code 工作流
-
-1. **分析** - Python 脚本扫描 Java 文件，构建依赖 DAG，规划批处理
-2. **翻译** - AI 将 Java 翻译为 Cangjie（小批次，1-3 个文件）
-3. **编译** - 每批翻译后运行 `cjpm build`
-4. **修复** - 如果编译失败，查询 Cangjie 技能进行修复（最多 3 次尝试）
-5. **暂停并询问** - 3 次失败后暂停并询问用户如何继续
-6. **报告** - 完成后生成翻译统计
-
-## Claude Code 项目结构
-
-```
-java2cangjie/
-├── .claude-plugin/
-│   └── plugin.json              # Claude Code 清单
-├── commands/
-│   └── j2c-translate.md        # 主翻译命令
-├── scripts/
-│   └── analyze_deps.py         # 依赖分析脚本
-├── skills/                      # Cangjie 文档技能
-├── agents/                      # 已存在
-└── .opencode/                   # OpenCode 插件（保持原有）
-```
-
-## 错误处理 (Claude Code)
-
-当编译失败时：
-
-1. 加载 `java2cangjie-fix` 技能
-2. 查询相关 Cangjie 技能
-3. 应用修复并重试编译
-4. 3 次失败后：暂停并询问用户
