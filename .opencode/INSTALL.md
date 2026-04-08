@@ -7,9 +7,7 @@
 
 ## Installation
 
-### Option 1: Git-based auto-install (recommended)
-
-Add to `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级）:
+Add java2cangjie to the `plugin` array in your `opencode.json` (global `~/.config/opencode/opencode.json` or project-level):
 
 ```json
 {
@@ -17,32 +15,20 @@ Add to `opencode.json`（全局 `~/.config/opencode/opencode.json` 或项目级�
 }
 ```
 
-重启 OpenCode 即可。插件通过 Bun 自动安装并缓存。
+Restart OpenCode. The plugin auto-installs via Bun and registers all skills.
 
-> **固定版本**: 在 URL 后加 `#<tag>`，如 `#v3.3.0`。
+Verify by asking: "列出你的 java2cangjie 技能"
 
-### Option 2: 项目级本地安装
+> **Pin a version**: Append `#<tag>` to the URL, e.g. `#v3.3.0`.
 
-将插件文件放入项目的 `.opencode/plugins/` 目录：
+## Usage
 
-```bash
-# 克隆仓库到项目根目录
-git clone https://github.com/thjyneg/java2cangjie.git .java2cangjie
+Use OpenCode's native `skill` tool:
 
-# 创建符号链接
-mkdir -p .opencode/plugins
-ln -s ../../.java2cangjie/.opencode/plugins/java2cangjie.js .opencode/plugins/java2cangjie.js
-
-# 安装依赖（自定义工具需要）
-cd .java2cangjie/.opencode && bun install
 ```
-
-### Option 3: 全局本地安装
-
-```bash
-git clone https://github.com/thjyneg/java2cangjie.git ~/.config/opencode/java2cangjie
-ln -s ../java2cangjie/.opencode/plugins/java2cangjie.js ~/.config/opencode/plugins/java2cangjie.js
-cd ~/.config/opencode/java2cangjie/.opencode && bun install
+use skill tool to list skills
+use skill tool to load java2cangjie-translate
+use skill tool to load cangjie-std
 ```
 
 ## 验证安装
@@ -56,43 +42,69 @@ cd ~/.config/opencode/java2cangjie/.opencode && bun install
 
 ## Plugin Tools
 
-| Tool | Args | Description |
-|------|------|-------------|
-| `analyze_project` | `javaPath` (string), `maxBatchSize` (number), `outputDir?` (string) | Scan Java project, build dependency DAG, return batch plan |
-| `next_batch` | — | Get next batch of files ready for translation |
-| `compile_batch` | `batchId` (string), `outputFiles?` (string[]) | Run `cjpm build`, auto-complete on success, return errors on failure |
-| `mark_complete` | `batchId` (string), `outputFiles?` (string[]) | Mark batch as completed successfully |
-| `mark_blocked` | `batchId` (string), `reason` (string) | Mark batch as failed after max retries |
-| `translation_status` | — | Get current progress |
+| Tool | Description |
+|------|-------------|
+| `analyze_project` | Scan Java project, build dependency DAG, return batch plan |
+| `next_batch` | Get next batch of files ready for translation (enforces one-at-a-time) |
+| `compile_batch` | Run `cjpm build`, auto-complete on success, return errors on failure |
+| `mark_complete` | Manual override: mark batch as completed (prefer compile_batch) |
+| `mark_blocked` | Mark batch as blocked after max retries |
+| `translation_status` | Get current progress |
 
 ## Skills (10)
 
 | Skill | Description |
 |-------|-------------|
-| `using-java2cangjie` | Bootstrap skill — auto-injected on session start |
-| `java2cangjie-translate` | Java-to-Cangjie mapping rules, type conversions |
-| `java2cangjie-fix` | Compilation error fixing |
-| `java2cangjie-report` | Translation report generation |
-| `cangjie-lang-features` | Core language: syntax, generics, concurrency |
-| `cangjie-std` | Standard library: collections, IO, filesystem |
-| `cangjie-stdx` | Extended library: JSON, encoding, config |
-| `cangjie-toolchains` | Toolchain: cjc, cjpm, cjfmt, cjlint |
-| `cangjie-regulations` | Project structure, naming conventions |
+| `using-java2cangjie` | Bootstrap — auto-injected on session start, introduces all skills |
+| `java2cangjie-translate` | Java-to-Cangjie mapping rules, type conversions, keyword handling |
+| `java2cangjie-fix` | Compilation error fixing — DAG-based, one-at-a-time, doc lookup |
+| `java2cangjie-report` | Translation report generation with statistics |
+| `cangjie-lang-features` | Core language: syntax, generics, concurrency, error handling |
+| `cangjie-std` | Standard library: collections, IO, filesystem, string, testing |
+| `cangjie-stdx` | Extended library: JSON encoding/decoding, configuration |
+| `cangjie-toolchains` | Toolchain: cjc, cjdb, cjfmt, cjlint, cjprof |
+| `cangjie-regulations` | Project structure, naming conventions, best practices |
 | `cangjie-original-docs` | Full original Cangjie documentation fallback |
+
+## Tool Mapping
+
+When skills reference Claude Code tools:
+
+- `TodoWrite` → `todowrite`
+- `Skill` tool → OpenCode's native `skill` tool
+- `Read`, `Write`, `Edit`, `Bash` → Your native tools
+- Plugin tools: `analyze_project`, `next_batch`, `compile_batch`, `mark_complete`, `mark_blocked`, `translation_status`
+
+## Updating
+
+Java2Cangjie updates automatically when you restart OpenCode. The plugin is re-installed from the git repository on each launch.
+
+To pin a specific version, use a branch or tag:
+
+```json
+{
+  "plugin": ["java2cangjie@git+https://github.com/thjyneg/java2cangjie.git#v3.3.0"]
+}
+```
 
 ## Troubleshooting
 
 ### Skills 不显示
 
-1. 检查插件是否加载：`opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie`
-2. 确认 `skills/` 目录存在于仓库根目录
-3. 本地安装时，确认符号链接指向正确
+1. Check logs: `opencode run --print-logs "hello" 2>&1 | grep -i java2cangjie`
+2. Verify the plugin line in your `opencode.json`
+3. Make sure you're running a recent version of OpenCode
 
 ### Tools 不显示
 
-1. 确认 `@opencode-ai/plugin` 可用：在 `.opencode/` 目录下运行 `bun install`
-2. 查看启动日志是否有 `[java2cangjie] Warning` 信息
-3. Tools 是可选的 — 即使没有 tools，skills 和 bootstrap 注入仍然正常工作
+1. Use `skill` tool to list discovered skills
+2. Check plugin loaded (see above)
+3. Each skill needs a `SKILL.md` file with valid YAML frontmatter
+
+### Bootstrap not appearing
+
+1. Check OpenCode version supports `experimental.chat.messages.transform` hook
+2. Restart OpenCode after config changes
 
 ### Claude Code 用户
 
