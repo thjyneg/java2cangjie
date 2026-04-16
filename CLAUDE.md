@@ -88,14 +88,18 @@ if (let Some(r) <- (stream as Resource)) { r.close() }
 | `int` | `Int` |
 | `byte` | `UInt8` |
 | `Optional<T>` | `Option<T>` |
-| `try/catch` | `try/except` |
-| `synchronized` | `std.sync.Mutex` |
+| `try/catch` | `try { } catch(e: Exception) { }`（用 `catch`，不是 `except`） |
+| `synchronized` | `std.sync.ReentrantMutex`（显式 lock/unlock + try/finally） |
 | `~value` (bitwise NOT) | `(-1) ^ value`（仓颉没有 `~` 运算符） |
 
-### Class Inheritance Rules
+### Class Inheritance Rules (CRITICAL — from 259-error learning)
+- `redef` **只能用于静态方法**，绝对不能用于实例方法覆写
+- 实例方法覆写**不需要任何关键字**（去掉 Java 的 `@Override`）
+- 父类方法必须标记 `open` 才能被子类覆写，整个继承链都需要
+- 需要被继承的类必须标记 `open class`
+- `abstract` 方法 → `open func` 不提供实现体（去掉 `abstract`）
 - `abstract class` 构造函数不能调用 `open` 方法 — 用延迟初始化或子类传参
 - `public` 类的父类也必须 `public`（可见性传播）
-- `redef` 只用于 `open class` 子类，不用于 `abstract class` 子类
 - 构造函数 `init` 不能有返回类型（去掉 `: Unit`）
 
 ### Option Type Rules

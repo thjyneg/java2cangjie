@@ -193,11 +193,31 @@ Before delivering any Cangjie code:
 
 | 错误 | 说明 | 正确做法 |
 |------|------|----------|
+| **redef 用于实例方法** | `redef` 只能用于静态方法，实例方法覆写不加任何关键字 | 实例方法直接 `func method()` |
+| **父类方法缺少 `open`** | 子类覆写需要父类方法标记 `open`，整个继承链都需要 | 父类加 `public open func` |
+| **类缺少 `open`** | 需要被继承的类必须标记 `open class` | `public open class X` |
 | Array vs ArrayList 混淆 | Array是定长数组，ArrayList是动态数组 | 需要动态增删元素时用ArrayList |
 | Option解包忘记处理None | Option<T>可能为None，必须处理 | 使用 if-let 或 getOrDefault 处理 |
-| mut关键字遗漏 | 需要修改的变量必须声明mut | `mut x = 0; x = 1;` |
-| 泛型约束缺失 | 使用泛型时未添加必要约束 | 添加 `where T: <trait>` |
-| if 分支无花括号 | 所有 if/else 分支必须用 `{}` | `if (cond) { ... }` |
-| 单行 if 语句 | 禁止单行无括号分支 | 始终使用块语句 |
-| match 分支无花括号 | match 分支体必须用 `{}` | `case x => { ... }` |
-| Option 用 match 而非 if-let | 不必要地使用 match | 优先用 if-let 解构 Option |
+| UInt8 溢出 | Java byte有符号(-128~127)，仓颉UInt8无符号(0~255) | 转换时加 `& 0xFF` 掩码 |
+| `~` 位运算NOT不存在 | 仓颉没有 `~` 运算符 | 用 `(-1) ^ value` 替代 |
+| `match` 只能用于enum | Int64等非enum类型不能match | 用 if-else chain 替代 |
+| `try/except` 语法错误 | 仓颉用 `catch` 不是 `except` | `try { } catch(e: Exception) { }` |
+| `instanceof` 误用 `is` | 类型检查用 `as` 返回 Option | `if (let Some(x) <- obj as Type)` |
+| 集合方法名不同 | `append`→`add`, `put`→下标赋值, `size()`→`.size`属性 | 查映射表确认 |
+| 测试放在 src/ | cjpm 编译 src/ 下所有文件，测试会与源码冲突 | 独立 `tests/` 目录 + 独立 cjpm.toml |
+
+## Cangjie Project Structure for Testing
+
+Tests must be in independent packages to avoid name collisions with stdlib types:
+
+```
+project/
+├── cjpm.toml          # Main package
+├── src/               # Source code only
+└── tests/             # Independent test package
+    ├── cjpm.toml      # name="<pkg>_test", deps via path=".."
+    └── src/
+        └── *_test.cj  # Use selective imports
+```
+
+Run tests: `cd tests && cjpm test`

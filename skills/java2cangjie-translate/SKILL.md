@@ -169,10 +169,10 @@ Key mapping rules:
 | `HashMap<K,V>` | `HashMap<K,V>` (from std.collection) |
 | `null` | `None` or `?? default` |
 | `Optional<T>` | `Option<T>` |
-| `try/catch` | `try/except` |
-| `throws` | No equivalent, use `Option` or `except` |
-| `synchronized` | `Mutex` from std.sync |
-| `instanceof` | `is` or `match` pattern |
+| `try/catch` | `try { } catch(e: Exception) { }` (use `catch`, NOT `except`) |
+| `throws` | No equivalent, use `Option` or `catch` |
+| `synchronized` | `ReentrantMutex` from `std.sync.ReentrantMutex` |
+| `instanceof` | `if (let Some(x) <- obj as Type)` (`as` returns Option, must unwrap) |
 | `System.out.println` | `println` |
 | `String.format` | String interpolation `\${expr}` |
 | `this.field` | `this.field` |
@@ -190,7 +190,7 @@ Key mapping rules:
 | `float` | `Float32` |
 | `double` | `Float64` |
 | `char` | `Rune` |
-| `~value` (bitwise NOT) | `!value` |
+| `~value` (bitwise NOT) | `(-1) ^ value` (Cangjie has NO `~` or `!` for bitwise NOT) |
 | `Thread.sleep(ms)` | `sleep(ms * 1000000)` (top-level func, nanoseconds) |
 | `str.isEmpty()` | `str.isEmpty()` (function call, not property) |
 | `new Byte(intVal)` | `UInt8(intVal)` |
@@ -260,22 +260,69 @@ class Derived <: Base {
 - Fields accessed from other packages MUST have explicit `public` modifier (default is `internal`)
 - Interface methods are `public` by default, but class methods are not
 
-**3. `open` / `redef` rules:**
-- `abstract class` methods can be overridden by abstract subclasses without `open`
-- `public class` (non-abstract) overriding parent methods requires parent method to be `open`
-- **`redef` is ONLY for `open class` subclasses**, NOT for `abstract class` subclasses
+**3. `open` / `redef` / `override` rules (CRITICAL — from 259-error learning):**
 
+This is the single most error-prone area in Java-to-Cangjie translation. The log4j-core translation produced 259 compilation errors, most from misunderstanding these rules.
+
+**Rule 1: `redef` is ONLY for static methods. NEVER use `redef` on instance methods.**
 ```cj
-// WRONG: redef in abstract class hierarchy
-public class Derived <: AbstractBase {
-    public redef func doWork() { ... }  // ❌ if AbstractBase is abstract
+// WRONG: redef on instance method
+public class Derived <: Base {
+    public redef func format(...) { ... }  // ❌ NEVER
 }
 
-// CORRECT: just override without redef
-public class Derived <: AbstractBase {
-    public func doWork() { ... }  // ✅
+// CORRECT: instance method override needs NO keyword
+public class Derived <: Base {
+    public func format(...) { ... }  // ✅ no redef, no override
 }
 ```
+
+**Rule 2: Parent methods MUST be `open` for subclasses to override them.**
+```cj
+// WRONG: parent method not open
+public class Base {
+    public func doWork() { ... }  // child CANNOT override this
+}
+
+// CORRECT: mark parent method as open
+public class Base {
+    public open func doWork() { ... }  // now child can override
+}
+```
+
+**Rule 3: `open` must propagate through the ENTIRE inheritance chain.**
+If GrandParent → Parent → Child, and Child overrides a method, BOTH GrandParent and Parent must have `open` on that method.
+
+**Rule 4: Classes that will be inherited MUST be declared `open class`.**
+```cj
+// WRONG: class not open
+public class Base { ... }  // cannot be inherited
+
+// CORRECT:
+public open class Base { ... }  // can be inherited
+```
+
+**Rule 5: `override` keyword does NOT exist in Cangjie. Just write the method.**
+```cj
+// Java: @Override public void doWork() { ... }
+// Cangjie: public func doWork() { ... }  // no annotation, no keyword
+```
+
+**Rule 6: `abstract` methods become `open func` without implementation body.**
+```cj
+// Java: abstract void doWork();
+// Cangjie: public open func doWork(): Unit  // no body, no abstract keyword
+```
+
+**Quick reference table:**
+| Java | Cangjie | Notes |
+|------|---------|-------|
+| `class X` (inheritable) | `open class X` | Must explicitly declare |
+| `method()` (overridable) | `open func method()` | Must explicitly declare |
+| `abstract method()` | `open func method()` (no body) | Remove `abstract` |
+| `@Override method()` | `func method()` (no keyword) | Remove `@Override` |
+| `static method()` (redefined in child) | `redef static func method()` | `redef` ONLY for static |
+| `class A implements B, C` | `class A <: B & C` | `&` for multiple interfaces |
 
 #### CRITICAL: Option Type Handling
 
@@ -584,3 +631,108 @@ rm -rf target/ .cached/
 
 - If all batches complete → invoke `java2cangjie-report` skill
 - If errors remain → invoke `java2cangjie-fix` skill
+
+## Lessons Learned from 11-Component Translation (AAR 2026-04-11)
+
+### Language Feature Impact Severity Matrix
+
+When planning a Java-to-Cangjie translation, assess these impact areas first:
+
+| Severity | Feature | Impact | Strategy |
+|----------|---------|--------|----------|
+| **FATAL** | No Java reflection | 30+ classes become empty stubs | Redesign serialization approach |
+| **FATAL** | No ClassLoader | Dynamic loading impossible | Hard-coded + string class names |
+| **HIGH** | `open`/`redef` rules | Every component with inheritance | Follow rules above, verify early |
+| **HIGH** | No `synchronized` | All concurrent code | `ReentrantMutex` + try/finally |
+| **HIGH** | `null` → `Option<T>` | All nullable code | if-let unwrapping pattern |
+| **MEDIUM** | `char` → `Rune`/`UInt8` | Character processing | ASCII code value comparison |
+| **MEDIUM** | `match` only for enum | Conditional branching | if-else chain replacement |
+| **MEDIUM** | `match` keyword collision | Methods named `match` | Backtick escaping: `` obj.`match`() `` |
+| **LOW** | `init` is keyword | Methods named `init` | Rename to `ensureInit` etc. |
+| **LOW** | `type` is keyword | Fields named `type` | Backtick or rename |
+
+### Independent Test Directory Pattern
+
+Cangjie cjpm compiles ALL files in `src/` together — there is no test source separation like Java Maven. Tests MUST be in an independent package:
+
+```
+<component>/
+├── cjpm.toml              # Main package
+├── src/                    # Source code (no test files!)
+└── tests/                  # Independent test package
+    ├── cjpm.toml           # name = "<component>_test", deps = { <component> = { path = ".." } }
+    └── src/
+        └── *_test.cj       # package <component>_test
+```
+
+**tests/cjpm.toml template:**
+```toml
+[package]
+name = "<component>_test"
+version = "1.0.0"
+cjc-version = "1.0.5"
+output-type = "static"
+
+[dependencies]
+<component> = { path = ".." }
+```
+
+**Why independent tests?** Cangjie's `@Test` macro and package scoping can conflict with types from `std.core` (e.g., `Configuration`, `ThreadContext`). Independent packages allow selective imports: `import my_package.{Type1, Type2}`.
+
+**Key rules for test files:**
+- Test package name = main package name + `_test`
+- Use selective imports to avoid name collisions with std types
+- No need to import `std.unittest.*` — `@Test`/`@Expect` macros are auto-available
+- Do NOT add `std_unittest` to cjpm.toml dependencies — `cjpm test` handles it
+
+### Intentional Stub Pattern
+
+When a Java feature has no Cangjie equivalent (reflection, dynamic proxy, bytecode generation), create explicit stubs with documentation:
+
+```cj
+// STUB: Cangjie has no Java reflection mechanism.
+// This class is intentionally empty — runtime JAXB serialization
+// needs to be redesigned for Cangjie.
+public class ClassBeanInfoImpl<T> {
+    public init() {}
+    // All methods are no-ops
+}
+```
+
+**Guidelines:**
+- Add a comment explaining WHY it's a stub (e.g., "Cangjie has no X")
+- Methods that would throw in real code should throw: `throw Exception("Not implemented: no Cangjie equivalent")`
+- Methods that would return values can return safe defaults (None, empty array, 0)
+- Document stubs in API diff documentation
+
+### UInt8/Byte Overflow Warning
+
+Java `byte` is signed (-128 to 127), Cangjie `UInt8` is unsigned (0 to 255). When translating byte operations:
+- Always use `& 0xFF` mask when converting from wider types: `UInt8(value & 0xFF)`
+- `UInt8()` constructor will overflow silently — validate bounds first
+- Array access on `String.toArray()` returns `UInt8` (bytes), not `Rune` (characters)
+- Base64/Hex decoder loops must guard against out-of-bounds: `if (ch < 128 && decodeMap[Int64(ch)] != -1)`
+
+### Collection Method Differences
+
+| Java | Cangjie | Note |
+|------|---------|------|
+| `list.add(item)` | `list.add(item)` | Same |
+| `list.append(item)` | `list.add(item)` | Java's append → Cangjie's add |
+| `map.put(k, v)` | `map[k] = v` | Subscript assignment |
+| `map.get(k)` | `map.get(k)` | Returns `?V` (Option) |
+| `list.size()` | `list.size` | Property, not method |
+| `arr.length` | `arr.size` | Different property name |
+| `list.remove(i)` | `list.remove(at: i)` | Named parameter |
+| `list.removeAt(i)` | `list.remove(at: i)` | Method name change |
+| `StringBuilder.clear()` | `sb.reset()` | Method name change |
+| `str.charAt(i)` | `str[i]` returns UInt8 | Returns byte, not char |
+
+### Proven Workflow: Incremental Build-Verify
+
+The most effective workflow for large components (100+ files):
+1. Analyze dependency DAG, identify layers (L0→L3)
+2. Translate Layer 0 first (no dependencies), compile after each batch of 1-3 files
+3. If compilation errors > 50, stop and verify language rules before continuing
+4. Use a "probe component" with deep inheritance (3+ levels) to validate `open`/`redef` rules early
+5. After all layers compile, run tests from independent `tests/` directories

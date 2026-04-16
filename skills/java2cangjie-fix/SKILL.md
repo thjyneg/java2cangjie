@@ -38,11 +38,14 @@ Group errors by pattern. Common categories (see `error-patterns.md` for details)
 
 | Category | Example | Priority |
 |----------|---------|----------|
+| Inheritance override | `redef cannot be used`, `cannot override function` | **Critical** |
 | Missing import | `Type 'ArrayList' not found` | High |
 | Type mismatch | `Cannot assign X to Y` | High |
 | API difference | `Method 'size' not found` | Medium |
 | Syntax error | `Expected ';'` | Medium |
 | Nullability | `Cannot assign nullable to non-nullable` | Medium |
+| Name collision | `ambiguous reference 'Configuration'` | Medium |
+| UInt8 overflow | `no matching function UInt8(Int64)` | Medium |
 | Generic type | `Generic parameter mismatch` | Low |
 | Unsupported feature | `Keyword 'synchronized' not supported` | Low |
 
