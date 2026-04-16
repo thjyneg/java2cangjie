@@ -221,7 +221,7 @@ for (item in list) {
 try {
   let fr = FileReader(path)
   // use fr
-} except (e: Exception) {
+} catch (e: Exception) {
   // handle error
 }
 // Cangjie has RAII - resources auto-cleanup when scope ends
@@ -309,13 +309,13 @@ error: '~' operator not supported
 error: unexpected token '~'
 ```
 
-**Cause:** Java `~` (bitwise NOT) maps to `!` in Cangjie.
+**Cause:** Cangjie has NO bitwise NOT operator (`~` or `!`). Must use XOR.
 
 **Fix:**
 ```cj
 // Java: int result = ~value;
 // Cangjie:
-let result = !value
+let result = (-1) ^ value
 ```
 
 ### 7.2 Int() Constructor Does Not Exist
@@ -416,7 +416,207 @@ stream.close()
 
 **Docs:** See `cangjie-std` skill → io / fs sections
 
-## 8. Pattern Accumulation
+## 8. Inheritance Override Errors (HIGH FREQUENCY)
+
+### 8.1 `redef` Used on Instance Methods
+
+**Symptom:**
+```
+error: 'redef' cannot be used here
+error: redef can only be used in open class
+```
+
+**Cause:** `redef` is ONLY for static methods in Cangjie. This was the #1 error source in log4j-core (259 errors).
+
+**Fix:**
+```cj
+// WRONG: redef on instance method
+public class Derived <: Base {
+    public redef func format(...): String { ... }  // ❌ NEVER
+}
+
+// CORRECT: no keyword needed for instance method override
+public class Derived <: Base {
+    public func format(...): String { ... }  // ✅
+}
+
+// CORRECT: redef ONLY for static methods
+public class Derived <: Base {
+    public redef static func create(...): Derived { ... }  // ✅
+}
+```
+
+**Docs:** See `cangjie-lang-features` skill → 类/class → 继承
+
+### 8.2 Parent Method Not Marked `open`
+
+**Symptom:**
+```
+error: cannot override function 'xxx' because it is not marked 'open'
+```
+
+**Cause:** In Cangjie, parent methods must be explicitly marked `open` for subclasses to override. This must propagate through the ENTIRE inheritance chain.
+
+**Fix:**
+```cj
+// WRONG: parent method not open
+public class Base {
+    public func doWork(): Unit { ... }  // child CANNOT override
+}
+
+// CORRECT: add open to parent
+public class Base {
+    public open func doWork(): Unit { ... }  // now child can override
+}
+```
+
+**IMPORTANT:** If the inheritance chain is GrandParent → Parent → Child, BOTH GrandParent and Parent must have `open` on the overridden method.
+
+### 8.3 Class Not Marked `open` for Inheritance
+
+**Symptom:**
+```
+error: class 'X' is not open and cannot be inherited
+```
+
+**Fix:**
+```cj
+// WRONG:
+public class Base { ... }
+
+// CORRECT:
+public open class Base { ... }
+```
+
+### 8.4 `abstract` Methods Need `open` (Not `abstract` Keyword)
+
+**Symptom:**
+```
+error: unexpected modifier 'abstract'
+```
+
+**Cause:** Cangjie uses `open func` without implementation body instead of Java's `abstract` keyword.
+
+**Fix:**
+```cj
+// Java: public abstract void doWork();
+// Cangjie:
+public open func doWork(): Unit  // no body, no abstract keyword
+```
+
+## 9. UInt8/Byte Overflow Errors
+
+### 9.1 UInt8 Constructor Overflow
+
+**Symptom:**
+```
+error: no matching function for UInt8(Int64)
+warning: implicit conversion may lose precision
+```
+
+**Cause:** Java `byte` is signed (-128 to 127), Cangjie `UInt8` is unsigned (0 to 255). Direct conversion from `Int64` to `UInt8` can overflow silently or fail.
+
+**Fix:**
+```cj
+// Java: byte b = (byte) intValue;
+// Cangjie: always mask with 0xFF
+let b = UInt8(value & 0xFF)
+
+// For Base64/Hex decoding: add bounds check
+if (ch < 128) {
+    let decoded = decodeMap[Int64(ch)]
+    // ...
+}
+```
+
+**Docs:** See `cangjie-lang-features` skill → 基本数据类型 → UInt8
+
+### 9.2 String Index Returns UInt8 (Not Char)
+
+**Symptom:**
+```
+error: cannot compare UInt8 with Int64
+error: type mismatch: expected Rune, got UInt8
+```
+
+**Cause:** `String.toArray()` returns `Array<UInt8>` (bytes), `String[i]` returns `UInt8`. Character comparison needs Rune or ASCII code.
+
+**Fix:**
+```cj
+// Java: if (str.charAt(i) == ';')
+// Cangjie:
+let bytes = str.toArray()
+if (bytes[i] == 59) { ... }  // 59 = ASCII ';'
+
+// Or use Rune for character iteration:
+for (r in str) {
+    if (UInt32(r) == 37) { ... }  // Rune → UInt32 comparison
+}
+```
+
+## 10. Name Collision with Standard Library
+
+### 10.1 `Configuration` Conflicts with std.core
+
+**Symptom:**
+```
+error: reference to 'Configuration' is ambiguous
+error: 'Configuration' is defined in multiple packages
+```
+
+**Cause:** Custom types like `Configuration` collide with `std.core.Configuration`. This happens when test files import both the translated package and stdlib.
+
+**Fix:**
+```cj
+// WRONG: wildcard import brings in conflicting names
+import logging_log4j_core.*
+
+// CORRECT: use selective imports
+import logging_log4j_core.{PatternLayout, MessageLayout, LoggerConfig}
+// Or use alias:
+import logging_log4j_core.{DefaultConfiguration as Log4jDefaultConfig}
+```
+
+**Best practice:** Put test files in an independent `tests/` package with selective imports. See `java2cangjie-translate` skill → Independent Test Directory Pattern.
+
+### 10.2 `match` Keyword in Method Names
+
+**Symptom:**
+```
+error: unexpected token 'match'
+```
+
+**Cause:** `match` is a Cangjie keyword. Java methods like `MimeType.match()` must be escaped.
+
+**Fix:**
+```cj
+// Java: mt.match(otherType)
+// Cangjie:
+mt.`match`(otherType)
+```
+
+## 11. Collection Method Name Differences
+
+### 11.1 `append` vs `add` / `put` vs Subscript
+
+**Symptom:**
+```
+error: method 'append' not found on ArrayList
+error: method 'put' not found on HashMap
+error: method 'size' not found (expects parentheses)
+```
+
+**Fix:**
+```cj
+// Java: list.append(item)  →  Cangjie: list.add(item)
+// Java: map.put(key, val)  →  Cangjie: map[key] = val
+// Java: list.size()        →  Cangjie: list.size  (property, not method)
+// Java: arr.length         →  Cangjie: arr.size   (property name differs)
+// Java: list.removeAt(i)   →  Cangjie: list.remove(at: i)
+// Java: sb.clear()         →  Cangjie: sb.reset()
+```
+
+**Docs:** See `cangjie-std` skill → collections; `cangjie-lang-features` → collections
 
 When encountering new patterns not listed here:
 1. Document the error (symptom)

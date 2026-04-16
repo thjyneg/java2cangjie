@@ -141,9 +141,9 @@ java2cangjie/
 | `HashMap<K,V>` | `std.collection.HashMap<K,V>` |
 | `null` | `None` / `?? default` |
 | `Optional<T>` | `Option<T>` |
-| `try/catch` | `try/except` |
-| `synchronized` | `std.sync.Mutex` |
-| `instanceof` | `is` 或 `match` 模式匹配 |
+| `try/catch` | `try { } catch(e: Exception) { }` |
+| `synchronized` | `std.sync.ReentrantMutex` |
+| `instanceof` | `if (let Some(x) <- obj as Type)` |
 | `~value` (位运算 NOT) | `(-1) ^ value` |
 | `byte[]` | `Array<Byte>` |
 

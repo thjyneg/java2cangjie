@@ -32,6 +32,14 @@ For each file pair (Java → Cangjie):
 - Import statements match actual API usage
 - Method signatures match (parameters, return types)
 - Generic types correctly mapped
+- `redef` NOT used on instance methods (static only)
+- Parent methods marked `open` where child classes override
+- Classes marked `open` where they are inherited
+
+### 2a. Intentional Stub Check
+- Stubs for Java features without Cangjie equivalents MUST have a comment explaining WHY (e.g., "Cangjie has no reflection")
+- Empty method bodies should either: throw `Exception("Not implemented")`, return safe defaults, or have explicit `// no-op` comments
+- NOT all empty methods are bugs — some are intentional design decisions (flagged clearly)
 
 ### 3. Null Safety
 - Java null references → Option<T> or ?? operator
@@ -40,11 +48,12 @@ For each file pair (Java → Cangjie):
 - No unsafe forced unwrapping
 
 ### 4. Control Flow
-- try/catch → try/except
-- synchronized → Mutex
-- instanceof → is/match
+- try/catch → `try { } catch(e: Exception) { }` (NOT `except`)
+- synchronized → `ReentrantMutex` with lock/unlock in try/finally
+- instanceof → `if (let Some(x) <- obj as Type)` (NOT `is`)
 - for-each → for-in
-- switch → match (where applicable)
+- switch → match (enum only; non-enum types use if-else)
+- `~value` bitwise NOT → `(-1) ^ value` (NOT `!value`)
 
 ### 5. Style Consistency
 - Naming conventions follow Cangjie idioms

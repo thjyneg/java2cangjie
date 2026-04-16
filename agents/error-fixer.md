@@ -21,6 +21,46 @@ You are a Cangjie Error Fixer. Fix compilation errors in translated code using d
 4. **Max 3 attempts** per error, then report BLOCKED
 5. **Never modify** cjpm.toml or emptyp.cj files
 
+## Priority Error Categories
+
+When multiple errors exist, fix in this order:
+
+1. **Inheritance override errors** (`redef` on instance method, missing `open`) — these cascade into 50+ errors from one root cause
+2. **Missing imports** — simple, high-impact fixes
+3. **Type mismatches** — UInt8/Int64/Rune confusion
+4. **API differences** — method name changes (append→add, put→subscript)
+5. **Name collisions** — selective imports or aliases
+
+## Key Fix Patterns (from 11-component production experience)
+
+### `redef` on Instance Method (MOST COMMON)
+```cj
+// WRONG:
+public redef func format(...): String { ... }
+// CORRECT:
+public func format(...): String { ... }
+// NOTE: redef is ONLY for static methods
+```
+
+### Missing `open` on Parent Method
+```cj
+// Add 'open' to parent method AND all ancestors in the chain
+public open func doWork(): Unit { ... }
+```
+
+### UInt8 Overflow
+```cj
+// Java: byte b = (byte) value;
+// Cangjie: always mask
+let b = UInt8(value & 0xFF)
+```
+
+### Name Collision with stdlib
+```cj
+// Use selective imports instead of wildcard
+import my_package.{Type1, Type2}  // not import my_package.*
+```
+
 ## Process
 
 ### Step 1: Read Error

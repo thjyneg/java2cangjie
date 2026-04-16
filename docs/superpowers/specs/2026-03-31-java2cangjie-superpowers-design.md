@@ -294,9 +294,9 @@ For each batch (1-3 files):
 - Java ArrayList<E> → std.collection.ArrayList<E>
 - Java HashMap<K,V> → std.collection.HashMap<K,V>
 - null → Option<T>.None or ?? operator
-- instanceof → match pattern matching
-- try/catch → try/except
-- synchronized → std.sync.Mutex
+- instanceof → if-let with `as` type cast (returns Option)
+- try/catch → try { } catch(e: Exception) { }
+- synchronized → std.sync.ReentrantMutex
 
 ## File Size Control
 - Single file >200 lines: translate alone
