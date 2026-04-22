@@ -20,9 +20,9 @@ A dual-platform plugin for translating Java projects to Cangjie (仓颉) languag
 ## Key Commands
 
 ```bash
-cd <output_dir>/<module> && cjpm build 2>&1   # 编译（优先于 cjc -p）
-cd <output_dir>/<module> && cjpm test           # 运行测试
-cd <output_dir>/<module> && cjpm clean           # 清理构建产物
+python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>  # 编译（自动创建占位文件 + cjpm build）
+cd <output_dir>/<module> && cjpm test             # 运行测试
+cd <output_dir>/<module> && cjpm clean             # 清理构建产物
 ```
 
 安装文档：`docs/README.claude-code.md`（Claude Code）、`.opencode/INSTALL.md`（OpenCode）
@@ -33,6 +33,7 @@ cd <output_dir>/<module> && cjpm clean           # 清理构建产物
 .claude-plugin/plugin.json          # Claude Code 清单
 .opencode/plugins/java2cangjie.js   # OpenCode 插件（工具 + 配置 + bootstrap）
 scripts/analyze_deps.py             # 依赖分析脚本（Python）
+scripts/cjpm-build                  # 编译 wrapper（自动创建占位文件 + cjpm build）
 hooks/                              # Claude Code SessionStart bootstrap 注入
 skills/                             # 10 个技能
 agents/                             # 3 个代理
@@ -44,17 +45,16 @@ agents/                             # 3 个代理
 
 **仓颉文档** (6): `cangjie-lang-features`, `cangjie-std`, `cangjie-stdx`, `cangjie-toolchains`, `cangjie-regulations`, `cangjie-original-docs`
 
-### Agents (3)
-- `cangjie-engineer` — 仓颉开发专家（全访问）
+### Agents (2)
+- `cangjie-translate-engineer` — 翻译工程师（Java→仓颉翻译 + 编译错误修复）
 - `translation-reviewer` — 翻译质量审查（只读）
-- `error-fixer` — 错误修复执行（写访问）
 
 ## Translation Workflow
 
 1. **Analyze** — 构建依赖 DAG，规划批次（1-3 文件）
 2. **Mock** — 为无仓颉对应的三方 API 创建 stub（`_mock/` 目录，方法抛出"未实现"异常）
 3. **Translate** — AI 读 Java，查仓颉文档，写仓颉代码
-4. **Compile** — 每批翻译后必须 `cjpm build`（不可跳过）
+4. **Compile** — 每批翻译后必须 `python <PLUGIN_ROOT>/scripts/cjpm-build <module>`（不可跳过）
 5. **Fix** — 编译失败：查文档修复，最多 3 次，之后暂停询问用户
 6. **Report** — 生成翻译报告
 

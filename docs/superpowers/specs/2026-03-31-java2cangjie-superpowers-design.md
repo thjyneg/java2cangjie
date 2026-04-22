@@ -64,9 +64,8 @@ java2cangjie-superpowers/
 │   ├── cangjie-regulations/             # Coding conventions
 │   └── cangjie-original-docs/           # Full original documentation fallback
 ├── agents/
-│   ├── cangjie-engineer.md              # General Cangjie development expert
-│   ├── translation-reviewer.md          # Quality reviewer (read-only)
-│   └── error-fixer.md                   # Error fix executor (read-write)
+│   ├── cangjie-translate-engineer.md    # Translation engineer (Java→Cangjie + error fix)
+│   └── translation-reviewer.md          # Quality reviewer (read-only)
 ├── templates/
 │   └── checkpoint.md                    # Checkpoint template (for Claude Code manual checkpoints)
 └── CLAUDE.md                            # Project-level instructions
@@ -93,7 +92,7 @@ java2cangjie-superpowers/
 | `skills/cangjie-toolchains/` | Toolchain documentation |
 | `skills/cangjie-regulations/` | Coding conventions |
 | `skills/cangjie-original-docs/` | Full original documentation fallback |
-| `agents/cangjie-engineer.md` | General Cangjie development expert agent |
+| `agents/cangjie-translate-engineer.md` | Java→Cangjie translation + error fix agent |
 | `.opencode/package.json` | Plugin dependencies (@opencode-ai/plugin) |
 
 ---
@@ -390,14 +389,14 @@ description: Use when generating translation reports or summarizing Java to Cang
 
 ## 5. Agents
 
-### 5.1 `cangjie-engineer`
+### 5.1 `cangjie-translate-engineer`
 
-**Location**: `agents/cangjie-engineer.md`
+**Location**: `agents/cangjie-translate-engineer.md`
 
-General Cangjie development expert for writing, debugging, and building Cangjie code. Uses cangjie-* skills for documentation lookup (no web search, no memory mechanism).
+Java-to-Cangjie translation engineer. Translates Java source to idiomatic Cangjie code and fixes compilation errors. Uses cangjie-* skills for documentation lookup.
 
 **Capabilities**: Full (write: true, edit: true, bash: true)
-**Use for**: Complex Cangjie code generation, debugging, and idiomatic code writing.
+**Use for**: Translating Java files to Cangjie, fixing compilation errors in translated code.
 
 ### 5.2 `translation-reviewer`
 
@@ -422,24 +421,6 @@ model: inherit
 - Import correctness
 - Missing translations
 - Type mapping accuracy
-
-### 5.3 `error-fixer`
-
-**Location**: `agents/error-fixer.md`
-
-```yaml
----
-name: error-fixer
-description: |
-  Use this agent when compilation errors in translated Cangjie code
-  need to be fixed by looking up documentation.
-model: inherit
----
-```
-
-**Capabilities**: Full (write: true, edit: true, bash: true)
-**Process**: Read error → lookup docs → minimal fix → compile → verify
-**Failure**: 3 attempts → report BLOCKED
 
 ---
 
@@ -684,7 +665,7 @@ On Claude Code (no plugin tools), the skill instructions include the same logic 
 ### Phase 2: Agents + Integration (1 day)
 
 - [ ] Write `agents/translation-reviewer.md`
-- [ ] Write `agents/error-fixer.md`
+- [ ] Write `agents/cangjie-translate-engineer.md`
 - [ ] Test with superpowers workflow integration
 - **Verify**: Full workflow with agent delegation
 
@@ -693,7 +674,7 @@ On Claude Code (no plugin tools), the skill instructions include the same logic 
 - [x] Delete old skills (analyze, test)
 - [x] Delete `tools/j2cj/`, `scripts/`
 - [x] Add 6 cangjie-* documentation skills (replacing java2cangjie-analyze/docs/)
-- [x] Add cangjie-engineer agent
+- [x] Add cangjie-translate-engineer agent (merged cangjie-engineer + error-fixer)
 - [x] Update CLAUDE.md
 - [x] Write README.md
 - [x] Fix plugin tool format to use official `tool` helper from `@opencode-ai/plugin`
@@ -712,5 +693,5 @@ On Claude Code (no plugin tools), the skill instructions include the same logic 
 | AI ignores batch size limits | Plugin tools enforce batch boundaries |
 | Dependency analysis misses imports | Combine import scanning + package structure heuristics |
 | Large files exceed context window | Single-file batches for >200 line files |
-| Translation quality varies | translation-reviewer agent provides QA |
+| Translation quality varies | translation-reviewer agent provides QA, cangjie-translate-engineer handles fixes |
 | Checkpoint corruption | State persisted as JSON, auto-recoverable |

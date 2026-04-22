@@ -124,10 +124,9 @@ java2cangjie/
 │   ├── cangjie-toolchains/      # 工具链文档
 │   ├── cangjie-regulations/     # 编码规范
 │   └── cangjie-original-docs/   # 完整原始文档 fallback
-├── agents/                      # 3 个代理
-│   ├── cangjie-engineer.md      # 仓颉开发专家
-│   ├── translation-reviewer.md  # 翻译质量审查
-│   └── error-fixer.md           # 错误修复执行
+├── agents/                      # 2 个代理
+│   ├── cangjie-translate-engineer.md  # 翻译工程师（Java→仓颉 + 错误修复）
+│   └── translation-reviewer.md  # 翻译质量审查
 ├── hooks/                       # Claude Code hooks (SessionStart)
 ├── scripts/                     # Python 依赖分析脚本
 └── .opencode/                   # OpenCode 插件（工具 + 配置）

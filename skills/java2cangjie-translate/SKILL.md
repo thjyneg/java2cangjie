@@ -133,6 +133,22 @@ These Java APIs have direct Cangjie equivalents — use them instead of mocking:
 
 ## Translation Loop
 
+**You MUST use TodoWrite to track each batch.** Create the todo list for every batch before starting:
+
+````
+TodoWrite: [
+  {"content": "Read Java source files for batch", "status": "pending", "activeForm": "Reading Java source files"},
+  {"content": "Scan imports and create mock stubs (if needed)", "status": "pending", "activeForm": "Scanning imports and creating mock stubs"},
+  {"content": "Query Cangjie documentation for mappings", "status": "pending", "activeForm": "Querying Cangjie documentation"},
+  {"content": "Translate files in batch", "status": "pending", "activeForm": "Translating files"},
+  {"content": "Compile: python <PLUGIN_ROOT>/scripts/cjpm-build <module>", "status": "pending", "activeForm": "Compiling translated code"},
+  {"content": "Fix errors (if compilation failed)", "status": "pending", "activeForm": "Fixing compilation errors"},
+  {"content": "Update state file and proceed to next batch", "status": "pending", "activeForm": "Updating state file"}
+]
+````
+
+Mark each task `in_progress` before starting, `completed` immediately after finishing. Only ONE task in_progress at a time.
+
 For each batch (1-3 files):
 
 ### 1. Read Java Source
@@ -529,25 +545,17 @@ Use `compile_batch(batchId)` — it handles compilation and batch status automat
 **Claude Code (manual):**
 
 ```bash
-cd <java_project>/j2cjgenerated/<module> && cjpm build 2>&1
+python <PLUGIN_ROOT>/scripts/cjpm-build <java_project>/j2cjgenerated/<module>
 ```
 
-`cjpm build` automatically handles dependency resolution and package linking. Prefer it over `cjc -p` which requires manually specifying dependency information.
-
-**NOTE - cjpm build directory scanning:**
-
-cjpm build requires at least one `.cj` file directly in each directory to scan subdirectories. If you see:
-```
-Warning: there is no '.cj' file in directory './src', and its subdirectories will not be scanned
-```
-Create a placeholder `.cj` file (e.g., `emptyp.cj`) in the directory.
+`<PLUGIN_ROOT>` is the plugin root directory shown in the session startup context. This wrapper automatically creates `_pkg.cj` placeholder files then runs `cjpm build`. Use it instead of calling `cjpm build` directly.
 
 **When to use each tool:**
 
 | Tool | Use Case | Notes |
 |-------|-----------|-------|
-| `compile_batch()` | OpenCode translation workflow | Plugin runs `cjpm build` internally, auto-manages status |
-| `cjpm build` | Claude Code translation workflow | Auto-handles dependencies, standard approach |
+| `compile_batch()` | OpenCode translation workflow | Plugin handles everything internally |
+| `python <PLUGIN_ROOT>/scripts/cjpm-build <module>` | Claude Code compilation | Auto-creates placeholders + builds, one command |
 | `cjc -p` | Single-package quick check only | No dependency resolution, use only for isolated packages |
 
 ### 7. Track Progress

@@ -9,6 +9,24 @@ description: "Use when generating translation reports, summarizing Java to Cangj
 
 Generate a comprehensive translation report after all translation and fixing is complete.
 
+## Report Generation Discipline
+
+**Use TodoWrite to track report sections.** Create the list before starting:
+
+```
+TodoWrite: [
+  {"content": "Generate Executive Summary", "status": "pending", "activeForm": "Generating Executive Summary"},
+  {"content": "Collect Translation Statistics", "status": "pending", "activeForm": "Collecting Translation Statistics"},
+  {"content": "Analyze Error Breakdown from state file", "status": "pending", "activeForm": "Analyzing Error Breakdown"},
+  {"content": "Verify Compilation Status", "status": "pending", "activeForm": "Verifying Compilation Status"},
+  {"content": "Summarize Batch Progress", "status": "pending", "activeForm": "Summarizing Batch Progress"},
+  {"content": "Write Recommendations", "status": "pending", "activeForm": "Writing Recommendations"},
+  {"content": "Save report to <output_dir>/TRANSLATION_REPORT.md", "status": "pending", "activeForm": "Saving report file"}
+]
+```
+
+Mark each section `completed` as you finish it. Do NOT skip sections.
+
 ## Report Sections
 
 Generate the following sections in order:
@@ -60,7 +78,7 @@ Report:
 ### 4. Compilation Status
 
 ```bash
-cd <output_dir> && cjpm build 2>&1
+python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>
 echo "Exit code: $?"
 ```
 

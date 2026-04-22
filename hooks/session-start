@@ -28,7 +28,10 @@ escape_for_json() {
 
 escaped=$(escape_for_json "$content")
 
-session_context="<EXTREMELY_IMPORTANT>\nYou have the Java to Cangjie translation system.\n\n**Below is the full content of your 'using-java2cangjie' skill - your introduction to Java-to-Cangjie translation. For detailed workflows, use the 'Skill' tool:**\n\n${escaped}\n</EXTREMELY_IMPORTANT>"
+# Normalize path to forward slashes for cross-platform compatibility
+PLUGIN_ROOT_FWD="${PLUGIN_ROOT//\\//}"
+
+session_context="<EXTREMELY_IMPORTANT>\nYou have the Java to Cangjie translation system.\n\n**Plugin root directory:** ${PLUGIN_ROOT_FWD}\n\nAll script paths below are relative to this plugin root. Use \`${PLUGIN_ROOT_FWD}/scripts/<script>\` when the working directory is not the plugin repo.\n\n**Below is the full content of your 'using-java2cangjie' skill - your introduction to Java-to-Cangjie translation. For detailed workflows, use the 'Skill' tool:**\n\n${escaped}\n</EXTREMELY_IMPORTANT>"
 
 # Output context injection as JSON.
 # Cursor hooks expect additional_context.

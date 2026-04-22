@@ -15,7 +15,7 @@
 ```json
 {
   "permissions": {
-    "allow": ["Bash(cjpm build*)", "Bash(python analyze_deps.py*)"]
+    "allow": ["Bash(python *cjpm-build*)", "Bash(python *analyze_deps.py*)"]
   }
 }
 ```

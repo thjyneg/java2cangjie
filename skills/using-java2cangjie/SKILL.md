@@ -30,7 +30,7 @@ Pure AI translation system with incremental dependency-driven strategy. No exter
 ```
 
 This command:
-1. Runs `scripts/analyze_deps.py` for dependency analysis and batch planning
+1. Runs `python <PLUGIN_ROOT>/scripts/analyze_deps.py` for dependency analysis and batch planning
 2. Initializes output structure with `cjpm.toml`
 3. Guides through incremental translation following dependency DAG
 4. Manages state file (`/.java2cangjie_state.json`)
@@ -62,19 +62,18 @@ Use when user requests:
 2. Follow the guided workflow through analysis, translation, and fixing
 
 **For error fixing on existing translations:**
-1. Run `cjpm build 2>&1` to capture errors
+1. Run `python <PLUGIN_ROOT>/scripts/cjpm-build <module>` to capture errors
 2. Invoke `java2cangjie-fix` skill directly
 
 ## Key Resources
 
 - Cangjie skills (documentation): `cangjie-std`, `cangjie-lang-features`, `cangjie-stdx`, `cangjie-toolchains`, `cangjie-regulations`, `cangjie-original-docs`
-- Checkpoint template: `templates/checkpoint.md`
+
 
 ## Available Agents
 
-- **cangjie-engineer** - Use for writing, debugging, or building Cangjie code. Expert in Cangjie syntax, std library, and cjpm. Delegating translation output to this agent ensures idiomatic Cangjie code.
+- **cangjie-translate-engineer** - Use for translating Java to Cangjie and fixing compilation errors. Expert in Cangjie syntax, translation rules, and error recovery.
 - **translation-reviewer** - Use for reviewing translated code quality against original Java source.
-- **error-fixer** - Use for fixing compilation errors by looking up documentation.
 
 ## Available Cangjie Skills
 
@@ -90,7 +89,7 @@ Use when user requests:
 ```
 New project:  analyze → create mocks → translate → (compile errors?) → fix → report
 Resume:       check state → next batch → continue
-Delegate:     Use cangjie-engineer for complex Cangjie code generation tasks
+Delegate:     Use cangjie-translate-engineer for complex Cangjie translation tasks
 ```
 
 ## Output Convention

@@ -22,7 +22,7 @@ Systematic error fixing using dependency-aware, one-at-a-time methodology. Every
 **Claude Code:**
 
 ```bash
-cd <output_dir>/<module> && cjpm build 2>&1
+python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>
 ```
 
 Capture the full error output. Parse error types and locations.
@@ -78,7 +78,7 @@ For each error:
 1. **Read the error** - Understand what failed and where
 2. **Lookup documentation** - Find the correct Cangjie API/syntax
 3. **Apply minimal fix** - Change only what's needed
-4. **Compile immediately** - `cd <output_dir> && cjpm build 2>&1` (Claude Code) or `compile_batch(batchId)` (OpenCode)
+4. **Compile immediately** - `python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>` (Claude Code) or `compile_batch(batchId)` (OpenCode)
 5. **Verify** - Check if the specific error is resolved
 6. **If compilation fails**: revert with `git checkout -- <file>` if new errors introduced
 7. **Max 3 retries** per error, then report as BLOCKED
@@ -99,18 +99,18 @@ For each compilation error:
 1. **First attempt (automated):**
    - Load relevant Cangjie skills based on error type
    - Apply fix suggested by error patterns
-   - Retry `cjpm build`
+   - Retry `python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>`
 
 2. **Second attempt (manual lookup):**
    - Parse error carefully
    - Look up exact syntax in `cangjie-lang-features` or `cangjie-original-docs`
    - Make targeted fixes
-   - Retry `cjpm build`
+   - Retry `python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>`
 
 3. **Third attempt (simplification):**
    - Try simplified approach if standard fix fails
    - Use explicit types or workarounds
-   - Retry `cjpm build`
+   - Retry `python <PLUGIN_ROOT>/scripts/cjpm-build <output_dir>/<module>`
 
 4. **After 3 failed attempts:**
    - Mark batch as `blocked` in state file
@@ -141,7 +141,7 @@ TodoWrite: [
 **NEVER modify these files:**
 
 1. **cjpm.toml** - Project configuration (user-managed)
-2. **emptyp.cj** - Placeholder files (may be referenced by other files)
+2. **_pkg.cj / emptyp.cj** - Placeholder files for cjpm directory scanning (auto-generated)
 
 If an error requires modifying these, document it and skip to next error.
 
@@ -210,7 +210,7 @@ See `error-patterns.md` in this directory for the complete pattern catalog.
 | `Array<Byte>()` invalid | Missing size and initial value | Use `Array<Byte>(0, repeat: 0)` |
 | `cannot compare with ==` on Option | Option doesn't support == | Use `match` or `if-let` |
 | `~ operator not found` | Cangjie has no bitwise NOT | Replace `~expr` with `(-1) ^ expr` |
-| `no '.cj' file in directory` | cjpm won't scan subdirs | Add placeholder `emptyp.cj` file |
+| `no '.cj' file in directory` | cjpm won't scan subdirs | Re-run `python <PLUGIN_ROOT>/scripts/cjpm-build <module>` (auto-creates placeholders) |
 
 ## Rules
 
@@ -228,7 +228,7 @@ See `error-patterns.md` in this directory for the complete pattern catalog.
 
 ### Success
 - All errors resolved
-- `cjpm build` returns exit code 0
+- `python <PLUGIN_ROOT>/scripts/cjpm-build <module>` returns exit code 0
 - No remaining `<--` markers
 - Batch marked as `completed` in state file
 
